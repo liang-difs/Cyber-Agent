@@ -1,0 +1,155 @@
+.tool-timeline {
+  margin: 8px 0;
+  padding: 12px 16px;
+  background: var(--app-surface-elevated);
+  border-radius: 8px;
+  border: 1px solid var(--app-border);
+}
+
+.tool-timeline-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--app-text-secondary);
+}
+
+.tool-timeline-icon {
+  margin-right: 6px;
+}
+
+.tool-timeline-title {
+  font-weight: 500;
+}
+
+.tool-timeline-show-more {
+  font-size: 12px;
+  color: var(--app-primary);
+  cursor: pointer;
+  margin: 4px 0 8px 22px;
+}
+
+.tool-timeline-show-more:hover {
+  text-decoration: underline;
+}
+
+.tool-timeline-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-timeline-item {
+  display: flex;
+  min-height: 32px;
+}
+
+.tool-timeline-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.tool-timeline-dot {
+  font-size: 14px;
+  line-height: 1;
+  z-index: 1;
+}
+
+.tool-timeline-line {
+  flex: 1;
+  width: 1px;
+  background: var(--app-border-strong);
+  margin: 2px 0;
+}
+
+.tool-timeline-item.running .tool-timeline-line {
+  background: var(--app-primary);
+}
+
+.tool-timeline-content {
+  flex: 1;
+  padding: 2px 0 8px 8px;
+  min-width: 0;
+}
+
+.tool-timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tool-timeline-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-text);
+}
+
+.tool-timeline-duration {
+  font-size: 12px;
+  color: var(--app-text-tertiary);
+  margin-left: auto;
+}
+
+.tool-timeline-expand-icon {
+  font-size: 10px;
+  color: var(--app-text-tertiary);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.tool-timeline-error {
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--app-danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-danger) 35%, transparent);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--app-danger);
+  word-break: break-word;
+}
+
+.tool-timeline-evidence {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--app-success) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-success) 30%, transparent);
+  border-radius: 6px;
+}
+
+.evidence-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-success);
+  margin-bottom: 6px;
+}
+
+.evidence-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.evidence-item:last-child {
+  border-bottom: none;
+}
+
+.evidence-source {
+  font-weight: 500;
+  color: var(--app-text);
+}
+
+.evidence-label {
+  color: var(--app-text-secondary);
+}
+
+.evidence-confidence {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--app-success);
+}

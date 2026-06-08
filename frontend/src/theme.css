@@ -1,0 +1,104 @@
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --app-bg: #f5f7fb;
+  --app-surface: #ffffff;
+  --app-surface-elevated: #fafafa;
+  --app-surface-soft: #f8fafc;
+  --app-surface-strong: #eef2ff;
+  --app-border: #e6e8ef;
+  --app-border-strong: #d9dde7;
+  --app-text: rgba(0, 0, 0, 0.88);
+  --app-text-secondary: rgba(0, 0, 0, 0.65);
+  --app-text-tertiary: rgba(0, 0, 0, 0.45);
+  --app-primary: #1677ff;
+  --app-primary-soft: rgba(22, 119, 255, 0.12);
+  --app-success: #52c41a;
+  --app-warning-bg: #fffbe6;
+  --app-warning-border: #ffe58f;
+  --app-warning-text: #ad6800;
+  --app-danger: #cf1322;
+  --app-shadow: 0 6px 24px rgba(15, 23, 42, 0.06);
+  --app-code-bg: rgba(0, 0, 0, 0.06);
+  --app-table-stripe: rgba(0, 0, 0, 0.02);
+  --app-table-header: #fafafa;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --app-bg: #0f1115;
+  --app-surface: #16181d;
+  --app-surface-elevated: #1c1f24;
+  --app-surface-soft: #13161a;
+  --app-surface-strong: #0d0f13;
+  --app-border: #2b313a;
+  --app-border-strong: #39414d;
+  --app-text: rgba(255, 255, 255, 0.88);
+  --app-text-secondary: rgba(255, 255, 255, 0.65);
+  --app-text-tertiary: rgba(255, 255, 255, 0.45);
+  --app-primary: #4c8dff;
+  --app-primary-soft: rgba(76, 141, 255, 0.16);
+  --app-success: #49d17f;
+  --app-warning-bg: rgba(250, 173, 20, 0.14);
+  --app-warning-border: rgba(250, 173, 20, 0.35);
+  --app-warning-text: #ffd666;
+  --app-danger: #ff7875;
+  --app-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
+  --app-code-bg: rgba(255, 255, 255, 0.08);
+  --app-table-stripe: rgba(255, 255, 255, 0.03);
+  --app-table-header: rgba(255, 255, 255, 0.06);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.page-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.page-card-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-card-fill .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-tabs-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-tabs-fill .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+}
+
+.page-tabs-fill .ant-tabs-content,
+.page-tabs-fill .ant-tabs-tabpane {
+  height: 100%;
+}

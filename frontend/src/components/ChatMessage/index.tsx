@@ -1,0 +1,112 @@
+import { useState } from 'react';
+import { Avatar, Typography, message as antMsg } from 'antd';
+import {
+  UserOutlined, RobotOutlined, LoadingOutlined,
+  CopyOutlined, ReloadOutlined, DownOutlined, BulbOutlined,
+} from '@ant-design/icons';
+import type { ChatMessage as ChatMessageType } from '../../types/api';
+import ResponseCards from '../ResponseCards';
+
+const { Text } = Typography;
+
+interface Props {
+  message: ChatMessageType;
+  isLast?: boolean;
+  onRegenerate?: () => void;
+}
+
+function summarizeThinking(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.includes('pcap') || lower.includes('capture')) return '正在分析网络流量...';
+  if (lower.includes('cve') || lower.includes('vulnerability')) return '正在查询漏洞信息...';
+  if (lower.includes('cve_catalog') || lower.includes('kev hit rate') || lower.includes('结构化查询')) return '正在整理漏洞统计...';
+  if (lower.includes('threat') || lower.includes('ip_threat')) return '正在查询威胁情报...';
+  if (lower.includes('ioc') || lower.includes('indicator')) return '正在分析威胁指标...';
+  if (lower.includes('final_answer') || lower.includes('综合')) return '正在生成分析报告...';
+  if (lower.includes('search') || lower.includes('搜索')) return '正在搜索相关信息...';
+  return '正在推理分析...';
+}
+
+export default function ChatMessage({ message, isLast, onRegenerate }: Props) {
+  const isUser = message.role === 'user';
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      antMsg.success('已复制到剪贴板');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      antMsg.error('复制失败');
+    }
+  };
+
+  return (
+    <div
+      className={`message-wrapper ${isUser ? 'message-wrapper-user' : 'message-wrapper-assistant'}`}
+    >
+      {!isUser && <Avatar icon={<RobotOutlined />} style={{ backgroundColor: 'var(--app-primary)' }} />}
+      <div className={isUser ? 'message-user-container' : 'message-assistant-container'}>
+        {/* Thinking block (collapsed by default) */}
+        {!isUser && message.thinking && (
+          <div
+            className="thinking-block"
+            onClick={() => setThinkingExpanded(!thinkingExpanded)}
+          >
+            <div className="thinking-summary">
+              <BulbOutlined />
+              <span>{summarizeThinking(message.thinking)}</span>
+              <DownOutlined
+                style={{
+                  fontSize: 10,
+                  transform: thinkingExpanded ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s',
+                }}
+              />
+            </div>
+            {thinkingExpanded && (
+              <div className="thinking-full">{message.thinking}</div>
+            )}
+          </div>
+        )}
+
+        <div style={{ position: 'relative' }}>
+          {/* Hover actions for assistant messages */}
+          {!isUser && message.content && (
+            <div className="message-actions">
+              <div className="message-action-btn" onClick={handleCopy} title="复制">
+                <CopyOutlined />
+              </div>
+              {isLast && onRegenerate && (
+                <div className="message-action-btn" onClick={onRegenerate} title="重新生成">
+                  <ReloadOutlined />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div
+            className={isUser ? 'message-bubble-user' : 'message-report-block'}
+          >
+            {isUser ? (
+              <span style={{ whiteSpace: 'pre-wrap' }}>{message.content}</span>
+            ) : message.content ? (
+              <ResponseCards
+                content={message.content}
+                streaming={message.streaming}
+                responseType={message.metadata?.response_type}
+              />
+            ) : message.thinking ? (
+              <LoadingOutlined style={{ color: 'var(--app-text-tertiary)' }} />
+            ) : (
+              <LoadingOutlined style={{ color: 'var(--app-text-tertiary)' }} />
+            )}
+          </div>
+        </div>
+      </div>
+      {isUser && <Avatar icon={<UserOutlined />} style={{ backgroundColor: 'var(--app-success)' }} />}
+    </div>
+  );
+}

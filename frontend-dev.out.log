@@ -1,0 +1,30 @@
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1378[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3000[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.85.19.103:[1m3000[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.142.1:[1m3000[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.214.1:[1m3000[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.66.76.191:[1m3000[22m/[39m
+[2m00:13:03[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Reports/index.tsx[22m
+[2m00:13:11[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Reports/index.tsx[22m
+[2m00:13:16[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Reports/index.tsx[22m
+[2m00:13:24[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Reports/index.tsx[22m
+[2m00:14:52[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Alerts/index.tsx[22m
+[2m00:14:59[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Alerts/index.tsx[22m
+[2m00:15:00[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Alerts/index.tsx[22m
+[2m00:15:07[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Alerts/index.tsx[22m
+[2m00:15:15[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Alerts/index.tsx[22m
+[2m00:15:23[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Alerts/index.tsx[22m
+[2m00:15:52[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Alerts/index.tsx[22m
+[2m00:16:32[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MultiAgent/index.tsx[22m
+[2m15:12:35[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MultiAgent/index.tsx[22m
+[2m15:12:49[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MultiAgent/index.tsx[22m
+[2m15:13:44[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MultiAgent/index.tsx[22m
+[2m15:13:59[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MultiAgent/index.tsx[22m
+[2m15:14:33[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MultiAgent/index.tsx[22m
+[2m16:12:05[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MultiAgent/index.tsx[22m
+[2m16:12:58[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MultiAgent/index.tsx[22m
+[2m19:47:56[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/RuleEngine/index.tsx[22m
+[2m19:48:24[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/RuleEngine/index.tsx[22m
+[2m19:48:32[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/RuleEngine/index.tsx[22m

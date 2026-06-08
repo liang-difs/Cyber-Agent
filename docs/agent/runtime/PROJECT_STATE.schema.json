@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PROJECT_STATE",
+  "description": "项目状态机 Schema，防止多 Agent 并发修改导致状态污染",
+  "type": "object",
+  "required": ["phase", "status", "current_goal", "completed", "blocked", "next", "forbidden", "last_updated", "updated_by"],
+  "properties": {
+    "phase": {
+      "type": "string",
+      "enum": ["Phase 0", "Phase 1", "Phase 2", "Phase 3", "Phase 4"],
+      "description": "当前项目阶段"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["in_progress", "blocked", "completed", "review"],
+      "description": "当前阶段状态"
+    },
+    "current_goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "当前阶段的核心目标"
+    },
+    "completed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "已完成的任务列表"
+    },
+    "blocked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task", "reason"],
+        "properties": {
+          "task": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      },
+      "description": "被阻塞的任务及原因"
+    },
+    "next": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "下一步待执行的任务"
+    },
+    "forbidden": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "当前阶段禁止执行的操作"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date",
+      "description": "最后更新日期"
+    },
+    "updated_by": {
+      "type": "string",
+      "description": "最后更新者标识"
+    }
+  },
+  "additionalProperties": false
+}

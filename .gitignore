@@ -54,6 +54,10 @@ data/
 # Local runtime state
 backend/data/runtime/
 
+# Logs and generated files
+*.log
+*.pdf
+
 # Project docs (not for distribution)
 XH-202609_*.md
 PROJECT_SUMMARY.md

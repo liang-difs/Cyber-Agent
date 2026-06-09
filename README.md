@@ -32,7 +32,7 @@
 ## 系统截图
 
 ### 态势总览
-![态势总览](system_images/dashboard_layout_after.png)
+![态势总览](system_images/dashboard_layout.png)
 
 ### Agent 对话与工具调用
 ![Agent 对话](system_images/Agent_pic_01.png)

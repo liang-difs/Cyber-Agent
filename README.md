@@ -1,37 +1,68 @@
 # CyberSec Agent
 
-网络安全智能分析平台 — 基于 LLM 驱动的 ReAct Agent，集成攻击链溯源、关联分析、威胁情报查询。
+通用网络安全智能体 — 基于 LLM 驱动的 ReAct Agent，集成多智能体协同、27 个安全工具、知识图谱、规则引擎、RAG 检索增强，覆盖渗透测试、应急响应、威胁狩猎、漏洞评估、恶意软件分析、逆向工程六大场景。
 
-## 功能
+## 核心能力
 
-- **态势总览** — 告警统计卡片 + 严重等级饼图 + 近 14 天趋势图 + 最近告警/CVE 表格 + 服务健康状态
-- **AI 对话** — ReAct Agent (Thought → Action → Observation)，WebSocket 流式输出，截断自动续写，会话按用户隔离
+- **自主任务理解** — 10+ 种输入格式自动检测（日志/PCAP/压缩包/二进制/配置文件/API 文档），自动路由到正确工具链
+- **多场景决策** — 6 种任务模板 + LLM 动态规划（Mini 2-4步 / Full 6-12步），条件执行 + 调查预算控制
+- **可解释推理** — DecisionTracker 全链路追踪（Thought → Action → Observation → Final Answer），审计报告导出
+- **证据驱动** — Evidence Store 证据存证，结论必须引用证据编号（E1, E2, E3...），动态加权置信度
+- **自动化响应** — 5 种响应动作（IP 封禁/主机隔离/通知/文件隔离/账户禁用），支持回滚 + 数据库持久化
+
+## 功能模块
+
+- **态势总览** — 告警统计 + 等级分布饼图 + 14 天趋势 + 最近告警/CVE + 服务健康
+- **AI 对话** — ReAct Agent，WebSocket 流式输出，27 个工具自动调用，证据引用输出
+- **多智能体协同** — Coordinator/Planner/Analyzer/Executor/Responder，分级 Planner，任务列表 + 步骤详情
 - **CVE 搜索** — NVD API + BM25 本地索引，支持 KEV 过滤
-- **IoC 查询** — VirusTotal / OTX AlienVault / AbuseIPDB 多源聚合，支持批量查询（最多 50 个）+ CSV 导出
+- **IoC 查询** — VirusTotal/OTX/AbuseIPDB 多源聚合，批量查询 + CSV 导出
 - **IP 威胁分析** — GeoIP + AbuseIPDB 信誉评分
-- **PCAP 分析** — tshark 解析 + 8 类异常检测（暴力破解/C2 信标/端口扫描/DNS 隧道/Beacon/可疑端口/TLS 降级/数据外泄）+ 自动告警生成 + 路径白名单安全校验
-- **告警管理** — ATT&CK TTP 映射（15 条规则精确映射）+ 真阳性/可疑/误报判决 + 4 级置信度标签 + 人工复核操作（确认真阳性/标记误报/关闭）
-- **攻击链溯源** — MITRE ATT&CK 战术序列化 + 进展评分 + 方向提示
-- **关联分析** — IP 聚类、规则爆发、跨目标、时间异常
-- **资产管理** — CMDB 资产 CRUD（主机/服务器/网络设备/应用），按 IP/名称/负责人检索
-- **报告生成** — Markdown + HTML 导出（可打印 PDF），支持 PCAP 富化 + 异常汇总 + 恶意软件家族识别（15 个）+ 应用协议上下文
-- **数据脱敏** — PCAP 分析前自动脱敏（邮箱/信用卡/SSN/凭据/私网 IP），仅协议元数据送入 LLM
-- **用户管理** — 管理员 CRUD 用户（创建/修改角色/停用/删除），角色：admin/analyst/viewer
-- **多租户隔离** — RAG 知识库按 tenant_id 隔离，会话按 user_id 隔离
-- **审计日志** — 全 API 请求记录，管理员可查
-- **系统监控** — PostgreSQL / Redis / ES / Celery / LLM 健康检查
+- **域名调查** — WHOIS/RDAP 注册信息 + DNS 记录 + SSL 证书 + 威胁情报，7 步完整调查流程
+- **外部威胁情报** — Shodan + GreyNoise + AbuseIPDB 三源并发查询
+- **PCAP 分析** — tshark 解析 + 8 类异常检测 + 自动告警生成
+- **告警管理** — ATT&CK 映射 + 真阳性/误报判决 + 人工复核 + 多智能体协同分析
+- **规则引擎** — Sigma（20 条）+ YARA（11 条），覆盖 10 个 MITRE ATT&CK 战术
+- **知识图谱** — 11,696 实体 + 14,299 关系（ATT&CK + CVE），BFS/路径查找/子图提取
+- **报告生成** — Markdown + HTML + **PDF + DOCX** 多格式导出
+- **资产管理** — CMDB 资产 CRUD + 告警联动
+- **用户管理** — admin/analyst/viewer 三级角色
+- **审计日志** — 全 API 请求记录 + 决策追踪审计报告
+
+## 系统截图
+
+### 态势总览
+![态势总览](system_images/dashboard_layout_after.png)
+
+### Agent 对话与工具调用
+![Agent 对话](system_images/Agent_pic_01.png)
+
+### 告警分析与研判
+![告警分析](system_images/alert_analysis.png)
+
+### PCAP 流量分析
+![PCAP 分析](system_images/Pcap_detect.png)
+
+### 攻击链溯源
+![攻击链分析](system_images/attrack_chain_analysis.png)
+
+### 规则引擎
+![规则引擎](system_images/rule_engine.png)
+
+### 报告生成
+![报告生成](system_images/report_generate.png)
 
 ## 知识库
 
 | 知识库 | 条数 | 说明 |
 |---|---|---|
 | NVD CVE | 44,165 | 含 CVSS、KEV 状态、PoC 标记 |
-| MITRE ATT&CK | 2,077 | STIX 2.1，含子技术 |
-| Sigma 规则 | 49,848 | 含检测逻辑注释 |
+| MITRE ATT&CK | 24,771 对象 | STIX 2.1，含子技术 + 恶意软件 + 威胁行为者 |
 | CISA KEV | 1,583 | 已知在野利用漏洞 |
-| JA3 指纹 | 157 | 恶意软件 TLS 特征 |
-| 威胁情报 | ~190,000 | 多源聚合 |
-| **总计** | **288,267** | BGE-M3 向量索引 + BM25 混合检索 (RRF 融合) |
+| Sigma 规则 | 20 条 | 覆盖 10 个 ATT&CK 战术 |
+| YARA 规则 | 11 条 | Webshell/C2/挖矿/反弹Shell 等 |
+| **RAG 总计** | **115,603** | ChromaDB 向量索引 + BM25 混合检索 (RRF 融合) |
+| **知识图谱** | **11,696 实体 + 14,299 关系** | ATT&CK 技术/恶意软件/威胁行为者 + CVE |
 
 ## 技术栈
 
@@ -312,17 +343,18 @@ Agent/
 
 ## 版本状态
 
-当前版本：v0.9.0（Phase 4 — 功能完善与质量加固）
+当前版本：v0.9.0（Phase 5 — 交付准备）
 
 | 阶段 | 状态 | 说明 |
 |---|---|---|
 | Phase 0-3 | 已完成 | 基础设施 + Agent 核心 + 工具 + RAG + 前端 |
-| Phase 4 | 已完成 | 安全加固 + 报告质量优化 + 仪表盘 + 用户管理 |
-| Phase 5 | 规划中 | 外部情报集成与监控面板 |
+| Phase 4 | 已完成 | 安全加固 + 报告优化 + 仪表盘 + 用户管理 |
+| Phase 5 | 进行中 | 多智能体增强 + 规则引擎扩充 + 外部情报 + 交付文档 |
 
 **关键指标：**
-- 后端测试：314+ 个全部通过
-- API 端点：14 个路由模块
-- 工具：19 个注册工具
+- 后端测试：78+ 个全部通过
+- API 端点：78 个（21 个路由模块）
+- 工具：27 个注册工具
 - 前端页面：17 个
-- 知识库：288,267 条（CVE + ATT&CK + Sigma + KEV + JA3 + 威胁情报）
+- 规则引擎：31 条（20 Sigma + 11 YARA）
+- 知识库：115,603 条 RAG + 11,696 知识图谱实体

@@ -1054,14 +1054,7 @@ class ReActAgent:
         """
         working_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
         tool_calls_log: list[dict[str, Any]] = []
-        total_tokens = 0
-        consecutive_failures = 0
-        tool_call_count = 0
-        seen_tool_calls: set[str] = set()
-        web_search_count = 0
-        last_web_search_query = ""
-        last_web_search_result: dict[str, Any] | None = None
-        last_cve_catalog_result: dict[str, Any] | None = None
+        state = LoopState()
 
         for turn in range(1, self.max_turns + 1):
             if should_compress(len(working_messages), self.compress_interval):
@@ -1100,16 +1093,16 @@ class ReActAgent:
                     fallback = _build_llm_unavailable_fallback(messages, str(e))
                     for i in range(0, len(fallback), 20):
                         yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
-                    total_tokens += max(1, len(fallback) // 4)
-                    yield TurnEvent(type="usage", turn=turn, content={"total_tokens": total_tokens})
+                    state.total_tokens += max(1, len(fallback) // 4)
+                    yield TurnEvent(type="usage", turn=turn, content={"total_tokens": state.total_tokens})
                     return
 
                 yield TurnEvent(type="error", turn=turn, content={"error": "stream_failed", "raw": str(e)})
                 return
 
             # Stream finished — parse the full response
-            total_tokens += len(accumulated) // 4  # rough token estimate
-            yield TurnEvent(type="usage", turn=turn, content={"total_tokens": total_tokens})
+            state.total_tokens += len(accumulated) // 4  # rough token estimate
+            yield TurnEvent(type="usage", turn=turn, content={"total_tokens": state.total_tokens})
             parsed = parse_llm_json(accumulated)
             logger.info("Turn %d LLM response (finish=%s): %s", turn, last_finish_reason, accumulated[:200])
 
@@ -1127,7 +1120,7 @@ class ReActAgent:
                     "content": "继续上一条回复，从断点处接着写，保持相同的格式和详细程度，不要重复已写内容。",
                 })
                 # Reset for next turn — don't return, let the loop continue
-                consecutive_failures = 0
+                state.consecutive_failures = 0
                 continue
 
             if "final_answer" in parsed:
@@ -1139,9 +1132,9 @@ class ReActAgent:
                 return
 
             if parsed.get("error") == "parse_failed":
-                consecutive_failures += 1
+                state.consecutive_failures += 1
                 yield TurnEvent(type="error", turn=turn, content={"error": "parse_failed", "raw": accumulated})
-                if consecutive_failures >= self.max_tool_retries:
+                if state.consecutive_failures >= self.max_tool_retries:
                     return
                 working_messages.append({"role": "assistant", "content": accumulated})
                 working_messages.append({
@@ -1163,41 +1156,18 @@ class ReActAgent:
 
             # Dedup: same tool + same core query already called
             call_key = _dedup_key(action, action_input)
-            if call_key in seen_tool_calls:
-                if action == WEB_SEARCH_TOOL_NAME and last_web_search_result is not None:
-                    fallback = _build_web_search_fallback(last_web_search_query, last_web_search_result)
-                    for i in range(0, len(fallback), 20):
-                        yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
-                    return
-                if action == CVE_CATALOG_TOOL_NAME and last_cve_catalog_result is not None:
-                    fallback = _build_cve_catalog_fallback(last_cve_catalog_result)
-                    for i in range(0, len(fallback), 20):
-                        yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
-                    return
-                fallback = thought_text or "基于已有信息，我无法获得更多数据，请尝试换个角度提问。"
+            is_duplicate = state.should_dedup(call_key)
+
+            # Handle dedup or tool call limit
+            if is_duplicate or state.tool_call_count >= MAX_TOOL_CALLS:
+                fallback = state.get_fallback_answer(thought_text)
                 for i in range(0, len(fallback), 20):
                     yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
                 return
 
-            # Tool call limit
-            if tool_call_count >= MAX_TOOL_CALLS:
-                if action == WEB_SEARCH_TOOL_NAME and last_web_search_result is not None:
-                    fallback = _build_web_search_fallback(last_web_search_query, last_web_search_result)
-                    for i in range(0, len(fallback), 20):
-                        yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
-                    return
-                if action == CVE_CATALOG_TOOL_NAME and last_cve_catalog_result is not None:
-                    fallback = _build_cve_catalog_fallback(last_cve_catalog_result)
-                    for i in range(0, len(fallback), 20):
-                        yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
-                    return
-                fallback = thought_text or "已达到工具调用上限，请基于以上结果提问或换个角度提问。"
-                for i in range(0, len(fallback), 20):
-                    yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
-                return
-
-            if action == WEB_SEARCH_TOOL_NAME and web_search_count >= 1 and last_web_search_result is not None:
-                fallback = _build_web_search_fallback(last_web_search_query, last_web_search_result)
+            # Web search count limit
+            if action == WEB_SEARCH_TOOL_NAME and state.web_search_count >= 1 and state.last_web_search_result is not None:
+                fallback = _build_web_search_fallback(state.last_web_search_query, state.last_web_search_result)
                 for i in range(0, len(fallback), 20):
                     yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
                 return
@@ -1219,26 +1189,18 @@ class ReActAgent:
 
             tool_result = await self.tools.execute(name=action, arguments=action_input, trace_id=trace_id, tenant_id=tenant_id)
 
-            tool_call_count += 1
-            seen_tool_calls.add(call_key)
-            if action == WEB_SEARCH_TOOL_NAME and tool_result.get("success"):
-                web_search_count += 1
-                last_web_search_query = str(action_input.get("query", "")).strip()
-                last_web_search_result = tool_result
-            if action == CVE_CATALOG_TOOL_NAME and tool_result.get("success"):
-                last_cve_catalog_result = tool_result
+            # Track tool call in state
+            state.register_tool_call(call_key, action, tool_result, action_input)
             tool_calls_log.append({"turn": turn, "tool": action, "input": action_input, "output": tool_result})
 
+            # Check web search relevance
             if action == WEB_SEARCH_TOOL_NAME and tool_result.get("success"):
-                web_search_count += 1
-                last_web_search_query = str(action_input.get("query", "")).strip()
-                last_web_search_result = tool_result
                 relevant_results = _web_search_relevant_results(
-                    last_web_search_query,
+                    state.last_web_search_query,
                     _normalize_web_search_results((tool_result.get("data") or {}).get("results", [])),
                 )
                 if not relevant_results:
-                    fallback = _build_web_search_insufficient(last_web_search_query)
+                    fallback = _build_web_search_insufficient(state.last_web_search_query)
                     for i in range(0, len(fallback), 20):
                         yield TurnEvent(type="answer_token", turn=turn, content=fallback[i:i+20])
                     return
@@ -1267,20 +1229,11 @@ class ReActAgent:
             yield TurnEvent(type="tool_result", turn=turn, content=result_content)
 
             if not tool_result.get("success"):
-                consecutive_failures += 1
+                state.consecutive_failures += 1
             else:
-                consecutive_failures = 0
+                state.consecutive_failures = 0
 
-        if last_web_search_result is not None:
-            fallback = _build_web_search_fallback(last_web_search_query, last_web_search_result)
-            for i in range(0, len(fallback), 20):
-                yield TurnEvent(type="answer_token", turn=self.max_turns, content=fallback[i:i+20])
-            return
-
-        if last_cve_catalog_result is not None:
-            fallback = _build_cve_catalog_fallback(last_cve_catalog_result)
-            for i in range(0, len(fallback), 20):
-                yield TurnEvent(type="answer_token", turn=self.max_turns, content=fallback[i:i+20])
-            return
-
-        yield TurnEvent(type="error", turn=self.max_turns, content={"error": "max_turns_reached"})
+        # Max turns reached - use state fallback
+        fallback = state.get_fallback_answer()
+        for i in range(0, len(fallback), 20):
+            yield TurnEvent(type="answer_token", turn=self.max_turns, content=fallback[i:i+20])

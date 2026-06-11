@@ -532,6 +532,21 @@ async def websocket_chat(
     pcap_bootstrap_context: dict[str, Any] = {}
     thinking_trace: list[str] = []
 
+    # Background keepalive: send ping every 30s to prevent proxy timeout
+    import asyncio
+    _keepalive_state = {"running": True}
+
+    async def _keepalive():
+        while _keepalive_state["running"]:
+            await asyncio.sleep(30)
+            try:
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({"type": "ping"})
+            except Exception:
+                break
+
+    keepalive_task = asyncio.create_task(_keepalive())
+
     try:
         while True:
             # Receive message
@@ -699,6 +714,13 @@ async def websocket_chat(
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.send_json({"type": "error", "code": "internal", "message": str(e)})
             await websocket.close()
+    finally:
+        _keepalive_state["running"] = False
+        keepalive_task.cancel()
+        try:
+            await keepalive_task
+        except asyncio.CancelledError:
+            pass
 
 
 def _get_llm_router():

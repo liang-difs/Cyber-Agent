@@ -46,6 +46,8 @@ export function useWebSocket(token: string | null): UseWebSocketReturn {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as WSEvent;
+        // Ignore server keepalive pings
+        if ((data as { type?: string }).type === 'ping') return;
         setEvents((prev) => {
           const next = [...prev, { ...data, _seq: ++eventSeqRef.current }];
           return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next;

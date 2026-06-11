@@ -350,7 +350,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   getToolExecutions: () => {
     const { currentSessionId, sessionData } = get();
     if (!currentSessionId) return [];
-    return sessionData[currentSessionId]?.toolExecutions || [];
+    return sessionData[currentSessionId]?.toolExecutions ?? [];
   },
 
   stopGeneration: () => {
@@ -524,9 +524,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
           case 'error':
             if (event.message && !event.message.includes('parse_failed') && last && last.role === 'assistant') {
+              // Store error separately from content to avoid polluting message text
               msgs[msgs.length - 1] = {
                 ...last,
-                content: last.content + `\n\n> ⚠️ ${event.message}`,
+                metadata: { ...last.metadata, error: event.message },
               };
               last = msgs[msgs.length - 1];
             }

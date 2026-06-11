@@ -108,6 +108,20 @@ export default function ChatMessage({ message, isLast, onRegenerate }: Props) {
             ) : (
               <LoadingOutlined style={{ color: 'var(--app-text-tertiary)' }} />
             )}
+            {/* Error banner (separate from content) */}
+            {!isUser && message.metadata?.error != null && (
+              <div style={{
+                marginTop: 8,
+                padding: '6px 10px',
+                borderRadius: 6,
+                background: 'var(--app-danger-bg, #fff2f0)',
+                border: '1px solid var(--app-danger-border, #ffccc7)',
+                fontSize: 13,
+                color: 'var(--app-danger, #ff4d4f)',
+              }}>
+                {'⚠️ '}{String(message.metadata.error)}
+              </div>
+            )}
           </div>
         </div>
       </div>

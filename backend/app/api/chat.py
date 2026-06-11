@@ -543,6 +543,10 @@ async def websocket_chat(
                 continue
 
             msg_type = data.get("type")
+            if msg_type == "stop":
+                # Client requested stop — close gracefully
+                await websocket.close(code=4000, reason="client_stop")
+                return
             if msg_type != "chat":
                 await websocket.send_json({"type": "error", "code": "unsupported", "message": f"Unknown type: {msg_type}"})
                 continue

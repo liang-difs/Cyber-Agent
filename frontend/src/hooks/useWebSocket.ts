@@ -77,7 +77,7 @@ export function useWebSocket(token: string | null): UseWebSocketReturn {
 
   const sendStop = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.close(4000, 'client_stop');
+      wsRef.current.send(JSON.stringify({ type: 'stop' }));
     }
   }, []);
 

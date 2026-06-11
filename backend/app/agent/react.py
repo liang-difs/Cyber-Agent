@@ -20,6 +20,7 @@ from app.agent.context_compressor import (
     compress_history,
 )
 from app.agent.decision_trace import decision_tracker
+from app.agent.loop_state import LoopState
 
 logger = logging.getLogger(__name__)
 
@@ -721,6 +722,64 @@ class ReActAgent:
         self.compress_interval = compress_interval
         self.obs_max_tokens = obs_max_tokens
 
+    def _build_result(
+        self,
+        state: LoopState,
+        turn: int,
+        success: bool,
+        final_answer: str,
+        tool_calls_log: list[dict[str, Any]],
+    ) -> ReActResult:
+        """Build a ReActResult from current state."""
+        return ReActResult(
+            success=success,
+            final_answer=final_answer,
+            turns_used=turn,
+            tool_calls=tool_calls_log,
+            total_tokens=state.total_tokens,
+            total_latency_ms=state.elapsed_ms(),
+        )
+
+    def _handle_dedup_or_limit(
+        self,
+        state: LoopState,
+        action: str,
+        action_input: dict[str, Any],
+        thought: str,
+        turn: int,
+        trace_id: str,
+        tool_calls_log: list[dict[str, Any]],
+        is_duplicate: bool = False,
+    ) -> ReActResult | None:
+        """Handle dedup detection or tool call limit.
+
+        Returns ReActResult if we should terminate, None to continue.
+        """
+        if is_duplicate:
+            decision_tracker.add_step(
+                trace_id=trace_id,
+                turn=turn,
+                decision_type="thought",
+                content=f"检测到重复工具调用: {action}",
+                metadata={"call_key": _dedup_key(action, action_input), "duplicate": True},
+            )
+        elif state.tool_call_count >= MAX_TOOL_CALLS:
+            decision_tracker.add_step(
+                trace_id=trace_id,
+                turn=turn,
+                decision_type="error",
+                content=f"达到工具调用上限 ({MAX_TOOL_CALLS})",
+                metadata={"tool_call_count": state.tool_call_count},
+            )
+        else:
+            return None
+
+        final_answer = state.get_fallback_answer(thought)
+        confidence = state.get_fallback_confidence()
+        decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=confidence)
+        decision_tracker.end_trace(trace_id, success=True)
+        return self._build_result(state, turn, True, final_answer, tool_calls_log)
+
     async def run(
         self,
         messages: list[dict[str, Any]],
@@ -732,15 +791,7 @@ class ReActAgent:
         """Execute the ReAct loop."""
         working_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
         tool_calls_log: list[dict[str, Any]] = []
-        total_tokens = 0
-        start_time = time.time()
-        consecutive_failures = 0
-        tool_call_count = 0
-        seen_tool_calls: set[str] = set()
-        web_search_count = 0
-        last_web_search_query = ""
-        last_web_search_result: dict[str, Any] | None = None
-        last_cve_catalog_result: dict[str, Any] | None = None
+        state = LoopState()
 
         # Start decision trace
         query = ""
@@ -748,7 +799,7 @@ class ReActAgent:
             if msg.get("role") == "user":
                 query = str(msg.get("content", ""))
                 break
-        
+
         decision_tracker.start_trace(
             trace_id=trace_id,
             session_id=session_id or trace_id,
@@ -783,7 +834,7 @@ class ReActAgent:
             llm_start = time.time()
             response = await self.llm.complete(request)
             llm_duration_ms = int((time.time() - llm_start) * 1000)
-            total_tokens += response.usage.get("total_tokens", 0)
+            state.total_tokens += response.usage.get("total_tokens", 0)
 
             # Parse LLM output
             parsed = parse_llm_json(response.content)
@@ -797,36 +848,26 @@ class ReActAgent:
                     confidence=parsed.get("confidence", 0.0),
                 )
                 decision_tracker.end_trace(trace_id, success=True)
-                
-                return ReActResult(
-                    success=True,
-                    final_answer=parsed["final_answer"],
-                    turns_used=turn,
-                    tool_calls=tool_calls_log,
-                    total_tokens=total_tokens,
-                    total_latency_ms=int((time.time() - start_time) * 1000),
-                )
+                return self._build_result(state, turn, True, parsed["final_answer"], tool_calls_log)
 
             # Check for error in parse
             if parsed.get("error") == "parse_failed":
-                consecutive_failures += 1
-                
+                state.consecutive_failures += 1
+
                 # Track error
                 decision_tracker.add_error(
                     trace_id=trace_id,
                     turn=turn,
-                    error=f"JSON 解析失败 (尝试 {consecutive_failures}/{self.max_tool_retries})",
+                    error=f"JSON 解析失败 (尝试 {state.consecutive_failures}/{self.max_tool_retries})",
                     metadata={"raw_content": response.content[:200]},
                 )
-                
-                if consecutive_failures >= self.max_tool_retries:
+
+                if state.consecutive_failures >= self.max_tool_retries:
                     decision_tracker.end_trace(trace_id, success=False, error="达到最大重试次数")
-                    return ReActResult(
-                        success=False,
-                        final_answer=f"Agent failed: LLM output could not be parsed after {consecutive_failures} attempts.",
-                        turns_used=turn,
-                        tool_calls=tool_calls_log,
-                        total_tokens=total_tokens,
+                    return self._build_result(
+                        state, turn, False,
+                        f"Agent failed: LLM output could not be parsed after {state.consecutive_failures} attempts.",
+                        tool_calls_log,
                     )
                 # Retry with error feedback
                 working_messages.append({
@@ -868,120 +909,26 @@ class ReActAgent:
                     confidence=parsed.get("confidence", 0.0),
                 )
                 decision_tracker.end_trace(trace_id, success=True)
-                
-                return ReActResult(
-                    success=True,
-                    final_answer=final_answer,
-                    turns_used=turn,
-                    tool_calls=tool_calls_log,
-                    total_tokens=total_tokens,
-                )
+                return self._build_result(state, turn, True, final_answer, tool_calls_log)
 
             # Dedup: check if same tool with same core query was already called
             call_key = _dedup_key(action, action_input)
-            if call_key in seen_tool_calls:
-                # Track duplicate detection
-                decision_tracker.add_step(
-                    trace_id=trace_id,
-                    turn=turn,
-                    decision_type="thought",
-                    content=f"检测到重复工具调用: {action}",
-                    metadata={"call_key": call_key, "duplicate": True},
-                )
-                
-                if action == WEB_SEARCH_TOOL_NAME and last_web_search_result is not None:
-                    final_answer = _build_web_search_fallback(last_web_search_query, last_web_search_result)
-                    decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.5)
-                    decision_tracker.end_trace(trace_id, success=True)
-                    return ReActResult(
-                        success=True,
-                        final_answer=final_answer,
-                        turns_used=turn,
-                        tool_calls=tool_calls_log,
-                        total_tokens=total_tokens,
-                        total_latency_ms=int((time.time() - start_time) * 1000),
-                    )
-                if action == CVE_CATALOG_TOOL_NAME and last_cve_catalog_result is not None:
-                    final_answer = _build_cve_catalog_fallback(last_cve_catalog_result)
-                    decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.5)
-                    decision_tracker.end_trace(trace_id, success=True)
-                    return ReActResult(
-                        success=True,
-                        final_answer=final_answer,
-                        turns_used=turn,
-                        tool_calls=tool_calls_log,
-                        total_tokens=total_tokens,
-                        total_latency_ms=int((time.time() - start_time) * 1000),
-                    )
-                final_answer = thought or "基于已有信息，我无法获得更多数据，请尝试换个角度提问。"
-                decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.3)
-                decision_tracker.end_trace(trace_id, success=True)
-                return ReActResult(
-                    success=True,
-                    final_answer=final_answer,
-                    turns_used=turn,
-                    tool_calls=tool_calls_log,
-                    total_tokens=total_tokens,
-                )
+            is_duplicate = state.should_dedup(call_key)
 
-            # Tool call limit
-            if tool_call_count >= MAX_TOOL_CALLS:
-                # Track tool call limit
-                decision_tracker.add_step(
-                    trace_id=trace_id,
-                    turn=turn,
-                    decision_type="error",
-                    content=f"达到工具调用上限 ({MAX_TOOL_CALLS})",
-                    metadata={"tool_call_count": tool_call_count},
-                )
-                
-                if action == WEB_SEARCH_TOOL_NAME and last_web_search_result is not None:
-                    final_answer = _build_web_search_fallback(last_web_search_query, last_web_search_result)
-                    decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.5)
-                    decision_tracker.end_trace(trace_id, success=True)
-                    return ReActResult(
-                        success=True,
-                        final_answer=final_answer,
-                        turns_used=turn,
-                        tool_calls=tool_calls_log,
-                        total_tokens=total_tokens,
-                        total_latency_ms=int((time.time() - start_time) * 1000),
-                    )
-                if action == CVE_CATALOG_TOOL_NAME and last_cve_catalog_result is not None:
-                    final_answer = _build_cve_catalog_fallback(last_cve_catalog_result)
-                    decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.5)
-                    decision_tracker.end_trace(trace_id, success=True)
-                    return ReActResult(
-                        success=True,
-                        final_answer=final_answer,
-                        turns_used=turn,
-                        tool_calls=tool_calls_log,
-                        total_tokens=total_tokens,
-                        total_latency_ms=int((time.time() - start_time) * 1000),
-                    )
-                final_answer = thought or "已达到工具调用上限，请基于以上结果提问或换个角度提问。"
-                decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.3)
-                decision_tracker.end_trace(trace_id, success=True)
-                return ReActResult(
-                    success=True,
-                    final_answer=final_answer,
-                    turns_used=turn,
-                    tool_calls=tool_calls_log,
-                    total_tokens=total_tokens,
-                )
+            # Handle dedup or tool call limit
+            result = self._handle_dedup_or_limit(
+                state, action, action_input, thought, turn, trace_id,
+                tool_calls_log, is_duplicate=is_duplicate,
+            )
+            if result is not None:
+                return result
 
-            if action == WEB_SEARCH_TOOL_NAME and web_search_count >= 1 and last_web_search_result is not None:
-                final_answer = _build_web_search_fallback(last_web_search_query, last_web_search_result)
+            # Web search count limit
+            if action == WEB_SEARCH_TOOL_NAME and state.web_search_count >= 1 and state.last_web_search_result is not None:
+                final_answer = _build_web_search_fallback(state.last_web_search_query, state.last_web_search_result)
                 decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.5)
                 decision_tracker.end_trace(trace_id, success=True)
-                return ReActResult(
-                    success=True,
-                    final_answer=final_answer,
-                    turns_used=turn,
-                    tool_calls=tool_calls_log,
-                    total_tokens=total_tokens,
-                    total_latency_ms=int((time.time() - start_time) * 1000),
-                )
+                return self._build_result(state, turn, True, final_answer, tool_calls_log)
 
             # Track tool call
             decision_tracker.add_action(
@@ -1030,14 +977,8 @@ class ReActAgent:
                 duration_ms=tool_duration_ms,
             )
 
-            tool_call_count += 1
-            seen_tool_calls.add(call_key)
-            if action == WEB_SEARCH_TOOL_NAME and tool_result.get("success"):
-                web_search_count += 1
-                last_web_search_query = str(action_input.get("query", "")).strip()
-                last_web_search_result = tool_result
-            if action == CVE_CATALOG_TOOL_NAME and tool_result.get("success"):
-                last_cve_catalog_result = tool_result
+            # Track tool call in state
+            state.register_tool_call(call_key, action, tool_result, action_input)
 
             tool_calls_log.append({
                 "turn": turn,
@@ -1047,26 +988,17 @@ class ReActAgent:
                 "duration_ms": tool_duration_ms,
             })
 
+            # Check web search relevance
             if action == WEB_SEARCH_TOOL_NAME and tool_result.get("success"):
-                web_search_count += 1
-                last_web_search_query = str(action_input.get("query", "")).strip()
-                last_web_search_result = tool_result
                 relevant_results = _web_search_relevant_results(
-                    last_web_search_query,
+                    state.last_web_search_query,
                     _normalize_web_search_results((tool_result.get("data") or {}).get("results", [])),
                 )
                 if not relevant_results:
-                    final_answer = _build_web_search_insufficient(last_web_search_query)
+                    final_answer = _build_web_search_insufficient(state.last_web_search_query)
                     decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.3)
                     decision_tracker.end_trace(trace_id, success=True)
-                    return ReActResult(
-                        success=True,
-                        final_answer=final_answer,
-                        turns_used=turn,
-                        tool_calls=tool_calls_log,
-                        total_tokens=total_tokens,
-                        total_latency_ms=int((time.time() - start_time) * 1000),
-                    )
+                    return self._build_result(state, turn, True, final_answer, tool_calls_log)
 
             # Truncate observation
             obs_content = compact_tool_observation(tool_result, self.obs_max_tokens)
@@ -1079,7 +1011,7 @@ class ReActAgent:
 
             # Check for tool failure
             if not tool_result.get("success"):
-                consecutive_failures += 1
+                state.consecutive_failures += 1
                 # Track tool failure
                 decision_tracker.add_error(
                     trace_id=trace_id,
@@ -1088,17 +1020,13 @@ class ReActAgent:
                     metadata={"tool_name": action, "tool_input": action_input},
                 )
             else:
-                consecutive_failures = 0
+                state.consecutive_failures = 0
 
         # Max turns reached
-        final_answer = (
-            _build_web_search_fallback(last_web_search_query, last_web_search_result)
-            if last_web_search_result is not None
-            else _build_cve_catalog_fallback(last_cve_catalog_result)
-            if last_cve_catalog_result is not None
-            else f"已达到最大推理轮次（{self.max_turns}）。请基于已有工具结果继续提问，或缩小问题范围后重试。"
+        final_answer = state.get_fallback_answer(
+            f"已达到最大推理轮次（{self.max_turns}）。请基于已有工具结果继续提问，或缩小问题范围后重试。"
         )
-        
+
         # Track max turns reached
         decision_tracker.add_step(
             trace_id=trace_id,
@@ -1109,15 +1037,8 @@ class ReActAgent:
         )
         decision_tracker.add_final_answer(trace_id=trace_id, answer=final_answer, confidence=0.3)
         decision_tracker.end_trace(trace_id, success=True)
-        
-        return ReActResult(
-            success=True,
-            final_answer=final_answer,
-            turns_used=self.max_turns,
-            tool_calls=tool_calls_log,
-            total_tokens=total_tokens,
-            total_latency_ms=int((time.time() - start_time) * 1000),
-        )
+
+        return self._build_result(state, self.max_turns, True, final_answer, tool_calls_log)
 
     async def run_streaming(
         self,

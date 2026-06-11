@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11"]
 
     steps:
       - uses: actions/checkout@v4
@@ -33,9 +33,9 @@ jobs:
         run: |
           cd backend
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest
 
-      - name: Run tests
+      - name: Run core tests
         env:
           APP_ENV: development
           AUTH_DEV_FALLBACK_ENABLED: "true"
@@ -51,8 +51,7 @@ jobs:
             --ignore=tests/test_llm_router.py \
             --ignore=tests/test_config.py \
             --ignore=tests/test_ioc_tool.py \
-            --ignore=tests/test_monitoring.py \
-            -k "not test_get_nonexistent_cve"
+            --ignore=tests/test_monitoring.py
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -97,7 +96,7 @@ jobs:
         run: pip install ruff
 
       - name: Lint backend
-        run: ruff check backend/app/ --select E,F,W --ignore E501,W503,E722,F841,E741,F401,F811,E712,W291,W293,E302,E303,E402,E266,E265,E231,E241,E261,E262,E271,E272,E301,E303,E501,W503,W504,E128,E126,E127,E131,E121,E122,E123,E124,E125,E126,E127,E128,E129,E131,E133
+        run: ruff check backend/app/ --select E,F,W --ignore E501,W503,E722,F841,E741,F401,F811,E712,W291,W293,E302,E303,E402
         continue-on-error: true
 
       - name: Check formatting

@@ -1,4 +1,7 @@
-"""Tool Registry — centralized tool registration and lookup."""
+"""Tool Registry — centralized tool registration and lookup.
+
+Integrates caching and retry logic for improved reliability and performance.
+"""
 
 from __future__ import annotations
 
@@ -24,12 +27,52 @@ ARGUMENT_ALIASES: dict[str, dict[str, str]] = {
     "task_planner": {"description": "task_description", "task": "task_description", "plan": "task_description"},
 }
 
+# Tools that should have their results cached (read-only query tools)
+CACHEABLE_TOOLS: set[str] = {
+    "cve_lookup",
+    "ioc_lookup",
+    "ip_threat_analysis",
+    "whois_lookup",
+    "dns_lookup",
+    "ssl_lookup",
+    "hash_lookup",
+}
+
+# Tools that should have retry logic for transient failures
+RETRY_TOOLS: set[str] = {
+    "web_search",
+    "threat_intel",
+    "ioc_lookup",
+    "nmap_scan",
+    "vuln_scan",
+}
+
 
 class ToolRegistry:
-    """Manages tool registration and schema access."""
+    """Manages tool registration, schema access, caching, and retry."""
 
-    def __init__(self):
+    def __init__(self, enable_cache: bool = True, enable_retry: bool = True):
         self._tools: dict[str, Any] = {}
+        self._enable_cache = enable_cache
+        self._enable_retry = enable_retry
+        self._cache = None
+        self._retry_configs = None
+
+    def _get_cache(self) -> Any:
+        """Lazy-load tool cache."""
+        if self._cache is None and self._enable_cache:
+            from app.agent.tool_cache import get_tool_cache
+            self._cache = get_tool_cache()
+        return self._cache
+
+    def _get_retry_config(self, tool_name: str) -> Any:
+        """Get retry config for a tool if retry is enabled."""
+        if not self._enable_retry:
+            return None
+        if tool_name not in RETRY_TOOLS:
+            return None
+        from app.agent.retry import TOOL_RETRY_CONFIGS
+        return TOOL_RETRY_CONFIGS.get(tool_name)
 
     def register(self, tool: Any) -> None:
         if tool.name in self._tools:
@@ -57,6 +100,14 @@ class ToolRegistry:
         return normalized
 
     async def execute(self, name: str, arguments: dict[str, Any], trace_id: str, tenant_id: str = "system") -> dict[str, Any]:
+        """Execute a tool with optional caching and retry.
+
+        Flow:
+        1. Check cache for cacheable tools (return immediately on hit)
+        2. Validate input parameters
+        3. Execute tool (with retry if configured)
+        4. Cache successful results for cacheable tools
+        """
         tool = self.get(name)
         if not tool:
             return ToolResult(
@@ -73,6 +124,14 @@ class ToolRegistry:
 
         # Normalize argument names (handle LLM alias errors)
         arguments = self._normalize_arguments(name, arguments)
+
+        # Check cache for cacheable tools
+        cache = self._get_cache()
+        if cache and name in CACHEABLE_TOOLS:
+            cached = cache.get(name, arguments)
+            if cached:
+                logger.info("Tool '%s' cache hit", name)
+                return cached
 
         # Use tool's declared input class, fallback to EchoInput
         input_cls = getattr(tool, "input_class", None)
@@ -100,5 +159,32 @@ class ToolRegistry:
                 execution_time_ms=0,
             ).model_dump()
 
-        result = await tool.execute(input_data)
-        return result.model_dump()
+        # Execute with retry if configured
+        retry_config = self._get_retry_config(name)
+        if retry_config:
+            from app.agent.retry import retry_async
+            try:
+                result = await retry_async(tool.execute, input_data, config=retry_config)
+            except Exception as e:
+                logger.error("Tool '%s' execution failed after retries: %s", name, e)
+                return ToolResult(
+                    success=False,
+                    tool_name=name,
+                    tool_version="v1",
+                    data={"raw_arguments": arguments},
+                    error=f"Tool execution failed after retries: {e}",
+                    confidence=0.0,
+                    evidence_source=[],
+                    trace_id=trace_id,
+                    execution_time_ms=0,
+                ).model_dump()
+        else:
+            result = await tool.execute(input_data)
+
+        result_dict = result.model_dump()
+
+        # Cache successful results for cacheable tools
+        if cache and name in CACHEABLE_TOOLS and result_dict.get("success"):
+            cache.set(name, arguments, result_dict)
+
+        return result_dict

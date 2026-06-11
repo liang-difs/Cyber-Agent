@@ -226,7 +226,7 @@ async def analyze_alert_with_multi_agent(
                 raise HTTPException(status_code=404, detail="Alert not found")
 
         # Build task parameters from alert context
-        from app.multi_agent.coordinator import get_coordinator
+        from app.api.multi_agent import get_coordinator
         from app.multi_agent.protocol import TaskRequest
 
         coordinator = get_coordinator()

@@ -101,7 +101,7 @@ async def export_audit_report(
     if trace.tenant_id != current_user.get("tenant_id") and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="无权访问此决策追踪记录")
 
-    report = decision_tracker.export_audit_report(trace_id, format)
+    report = decision_tracker.export_audit_report(trace_id, fmt=format)
     if not report:
         raise HTTPException(status_code=500, detail="导出审计报告失败")
 

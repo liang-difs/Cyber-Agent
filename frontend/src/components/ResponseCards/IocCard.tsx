@@ -1,5 +1,6 @@
 import { Card, Tag, Table, Typography, Progress, Descriptions } from 'antd';
 import { SafetyOutlined } from '@ant-design/icons';
+import { getScoreColor, getScoreStatus, parseNumericScore } from '../../utils/helpers';
 
 const { Text, Paragraph } = Typography;
 
@@ -21,20 +22,6 @@ interface IocData {
   campaign: string;
   fixSuggestions: string[];
   dataSources: string[];
-}
-
-function getScoreColor(score: number): string {
-  if (score >= 80) return '#f5222d';
-  if (score >= 60) return '#fa8c16';
-  if (score >= 40) return '#fadb14';
-  return '#52c41a';
-}
-
-function getScoreStatus(score: number): 'exception' | 'active' | 'normal' | 'success' {
-  if (score >= 80) return 'exception';
-  if (score >= 60) return 'active';
-  if (score >= 40) return 'normal';
-  return 'success';
 }
 
 function parseIocMarkdown(content: string): IocData | null {
@@ -108,11 +95,6 @@ function parseIocMarkdown(content: string): IocData | null {
   }
 
   return data.indicator ? data : null;
-}
-
-function parseNumericScore(scoreStr: string): number {
-  const match = scoreStr.match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : 0;
 }
 
 export default function IocCard({ content }: { content: string }) {

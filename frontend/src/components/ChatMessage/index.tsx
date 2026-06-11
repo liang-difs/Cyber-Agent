@@ -20,8 +20,13 @@ function summarizeThinking(text: string): string {
   if (lower.includes('pcap') || lower.includes('capture')) return '正在分析网络流量...';
   if (lower.includes('cve') || lower.includes('vulnerability')) return '正在查询漏洞信息...';
   if (lower.includes('cve_catalog') || lower.includes('kev hit rate') || lower.includes('结构化查询')) return '正在整理漏洞统计...';
-  if (lower.includes('threat') || lower.includes('ip_threat')) return '正在查询威胁情报...';
+  if (lower.includes('threat') || lower.includes('ip_threat') || lower.includes('threat_intel')) return '正在查询威胁情报...';
   if (lower.includes('ioc') || lower.includes('indicator')) return '正在分析威胁指标...';
+  if (lower.includes('whois') || lower.includes('注册信息')) return '正在查询 WHOIS 信息...';
+  if (lower.includes('dns') || lower.includes('dns_lookup')) return '正在查询 DNS 记录...';
+  if (lower.includes('ssl') || lower.includes('证书')) return '正在查询 SSL 证书...';
+  if (lower.includes('planner') || lower.includes('调查计划')) return '正在生成调查计划...';
+  if (lower.includes('rule_match') || lower.includes('sigma') || lower.includes('yara')) return '正在匹配检测规则...';
   if (lower.includes('final_answer') || lower.includes('综合')) return '正在生成分析报告...';
   if (lower.includes('search') || lower.includes('搜索')) return '正在搜索相关信息...';
   return '正在推理分析...';
@@ -96,7 +101,7 @@ export default function ChatMessage({ message, isLast, onRegenerate }: Props) {
               <ResponseCards
                 content={message.content}
                 streaming={message.streaming}
-                responseType={message.metadata?.response_type}
+                responseType={message.metadata?.response_type as 'cve' | 'cve_catalog' | 'ioc' | 'ip' | 'markdown' | undefined}
               />
             ) : message.thinking ? (
               <LoadingOutlined style={{ color: 'var(--app-text-tertiary)' }} />

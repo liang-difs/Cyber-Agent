@@ -65,18 +65,18 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
-  thinking?: string;        // 推理摘要（完整内容折叠）
+  thinking?: string;
   streaming?: boolean;
-  toolCalls?: Array<Record<string, any>>;
+  toolCalls?: Array<Record<string, unknown>>;
   toolCallId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Tool Execution State Machine
 export type ToolStatus = 'queued' | 'running' | 'retrying' | 'success' | 'timeout' | 'failed' | 'cancelled';
 
 export interface ToolExecution {
-  id: string;              // tool_call_id
+  id: string;
   tool: string;
   label?: string;
   status: ToolStatus;
@@ -85,7 +85,7 @@ export interface ToolExecution {
   messageId?: string;
   error?: string;
   retryCount?: number;
-  input?: Record<string, any>;
+  input?: Record<string, unknown>;
   evidence?: EvidenceItem[];
   ragSummary?: {
     query: string;
@@ -131,7 +131,7 @@ export interface Session {
 export interface TaskStatus {
   task_id: string;
   status: string;
-  result: any;
+  result: Record<string, unknown>;
   traceback?: string;
   warning?: string;
 }
@@ -150,7 +150,7 @@ export interface AlertTriageResult {
   task_id: string;
   status: string;
   queue: string;
-  result?: Record<string, any>;
+  result?: Record<string, unknown>;
   warning?: string;
 }
 
@@ -166,7 +166,7 @@ export interface AlertTriageOutcome {
   assessment?: AlertAssessment;
   enrichment?: {
     ip_reputation?: number | null;
-    geo?: Record<string, any> | null;
+    geo?: Record<string, unknown> | null;
   };
 }
 
@@ -283,7 +283,7 @@ export interface PcapResult {
   timeline?: TimelineEvent[];
   external_ips_for_lookup?: string[];
   domains_for_lookup?: string[];
-  llm_context?: Record<string, any>;
+  llm_context?: Record<string, unknown>;
   warning?: string;
   error?: string;
   tenant_id?: string;
@@ -305,7 +305,7 @@ export interface Alert {
   rule_id: string;
   src_ip?: string;
   dst_ip?: string;
-  severity: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   status: string;
   verdict?: string;
   confidence: number;
@@ -353,7 +353,7 @@ export interface CorrelationPattern {
   description: string;
   confidence: number;
   related_alerts: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CorrelationResponse {
@@ -372,7 +372,7 @@ export interface AuditLog {
   user_id?: string;
   action: string;
   resource: string;
-  detail?: Record<string, any>;
+  detail?: Record<string, unknown>;
   ip_address?: string;
   tenant_id: string;
   created_at: string;
@@ -398,7 +398,7 @@ export interface HealthCheck {
   circuits?: Record<string, { failures: number; open: boolean; reset_in_seconds: number }>;
   usage_event_count?: number;
   total_cost_usd?: number;
-  recent_usage?: Array<Record<string, any>>;
+  recent_usage?: Array<Record<string, unknown>>;
 }
 
 export interface HealthResponse {

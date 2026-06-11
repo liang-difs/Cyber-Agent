@@ -75,9 +75,7 @@ class TestCveDetailAPI:
     def test_get_nonexistent_cve(self, client, mock_bm25):
         mock_bm25.get_by_id.return_value = None
         resp = client.get("/api/v1/cve/CVE-9999-9999")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["error"] == "not_found"
+        assert resp.status_code == 404
 
 
 class TestCveStatsAPI:

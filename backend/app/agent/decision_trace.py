@@ -87,9 +87,12 @@ class DecisionTrace:
 class DecisionTracker:
     """决策追踪器"""
 
+    MAX_TRACES = 500  # Maximum traces to keep in memory
+
     def __init__(self):
         self._traces: dict[str, DecisionTrace] = {}
         self._step_counter: dict[str, int] = {}
+        self._trace_order: list[str] = []  # For LRU eviction
 
     def start_trace(
         self,
@@ -100,6 +103,12 @@ class DecisionTracker:
         query: str,
     ) -> DecisionTrace:
         """开始新的决策追踪"""
+        # Evict oldest traces if at capacity
+        while len(self._traces) >= self.MAX_TRACES:
+            oldest_id = self._trace_order.pop(0)
+            self._traces.pop(oldest_id, None)
+            self._step_counter.pop(oldest_id, None)
+
         trace = DecisionTrace(
             trace_id=trace_id,
             session_id=session_id,
@@ -110,6 +119,7 @@ class DecisionTracker:
         )
         self._traces[trace_id] = trace
         self._step_counter[trace_id] = 0
+        self._trace_order.append(trace_id)
         return trace
 
     def get_trace(self, trace_id: str) -> Optional[DecisionTrace]:
@@ -175,11 +185,15 @@ class DecisionTracker:
 
                     return trace
 
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Can't await in sync context, return None
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context — schedule as a task and return None
+                # The caller should await if needed
+                logger.debug("Cannot sync-load trace %s in running loop", trace_id)
                 return None
-            return loop.run_until_complete(_do_load())
+            except RuntimeError:
+                # No running loop — safe to use run_until_complete
+                return asyncio.run(_do_load())
 
         except Exception as e:
             logger.debug("Failed to load trace %s from DB: %s", trace_id, e)
@@ -405,34 +419,33 @@ class DecisionTracker:
                 steps_data.append(step_dict)
 
             async def _do_persist():
-                async with factory() as session:
-                    record = DecisionTraceRecord(
-                        id=trace.trace_id,
-                        session_id=trace.session_id,
-                        user_id=trace.user_id,
-                        tenant_id=trace.tenant_id,
-                        query=trace.query[:2000],
-                        start_time=trace.start_time,
-                        end_time=trace.end_time,
-                        total_duration_ms=trace.total_duration_ms,
-                        success=trace.success,
-                        error=trace.error,
-                        final_answer=trace.final_answer[:5000] if trace.final_answer else None,
-                        final_confidence=trace.final_confidence,
-                        steps_json=steps_data,
-                    )
-                    session.add(record)
-                    await session.commit()
+                try:
+                    async with factory() as session:
+                        record = DecisionTraceRecord(
+                            id=trace.trace_id,
+                            session_id=trace.session_id,
+                            user_id=trace.user_id,
+                            tenant_id=trace.tenant_id,
+                            query=trace.query[:2000],
+                            start_time=trace.start_time,
+                            end_time=trace.end_time,
+                            total_duration_ms=trace.total_duration_ms,
+                            success=trace.success,
+                            error=trace.error,
+                            final_answer=trace.final_answer[:5000] if trace.final_answer else None,
+                            final_confidence=trace.final_confidence,
+                            steps_json=steps_data,
+                        )
+                        session.add(record)
+                        await session.commit()
+                except Exception as e:
+                    logger.debug("Persist trace %s failed: %s", trace.trace_id, e)
 
-            # Run persistence in background (non-blocking)
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.ensure_future(_do_persist())
-                else:
-                    loop.run_until_complete(_do_persist())
+                loop = asyncio.get_running_loop()
+                loop.create_task(_do_persist())
             except RuntimeError:
-                # No event loop running, skip persistence
+                # No running loop — skip persistence
                 pass
 
         except Exception as e:
@@ -482,16 +495,16 @@ class DecisionTracker:
     def export_audit_report(
         self,
         trace_id: str,
-        format: str = "json",
+        fmt: str = "json",
     ) -> Optional[str]:
         """导出审计报告"""
         trace = self._traces.get(trace_id)
         if not trace:
             return None
 
-        if format == "json":
+        if fmt == "json":
             return self._export_json(trace)
-        elif format == "markdown":
+        elif fmt == "markdown":
             return self._export_markdown(trace)
         else:
             return None

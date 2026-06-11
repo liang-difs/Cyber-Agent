@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     # GreyNoise
     greynoise_api_key: str = ""
 
+    # SearXNG
+    searxng_url: str = "http://localhost:8888"
+
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
@@ -134,9 +137,13 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     s = Settings()
     if not s.jwt_secret:
+        if s.app_env.lower() == "production":
+            raise ValueError("JWT_SECRET must be configured in production.")
+        import secrets
+        s.jwt_secret = secrets.token_urlsafe(32)
         logger.warning(
-            "JWT_SECRET not set - using empty string in non-production. "
-            "Set JWT_SECRET in .env for production."
+            "JWT_SECRET not set — generated random ephemeral key for dev. "
+            "Set JWT_SECRET in .env for persistent tokens."
         )
     return s
 

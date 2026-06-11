@@ -212,7 +212,7 @@ class ApiDocParserTool:
         """Fetch API doc from URL."""
         import httpx
 
-        async with httpx.AsyncClient(timeout=30, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(url)
             response.raise_for_status()
             return response.json()

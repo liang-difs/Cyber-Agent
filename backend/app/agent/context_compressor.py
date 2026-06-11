@@ -14,10 +14,16 @@ from typing import Any
 
 
 def estimate_tokens(text: str) -> int:
-    """Rough token estimation: ~4 chars per token for mixed content."""
+    """Token estimation with CJK-aware heuristic.
+
+    CJK characters are typically 1-2 tokens each, while ASCII is ~4 chars/token.
+    This function weights CJK characters more heavily.
+    """
     if not text:
         return 0
-    return max(1, len(text) // 4)
+    cjk_count = sum(1 for c in text if '\u4e00' <= c <= '\u9fff' or '\u3000' <= c <= '\u303f')
+    ascii_count = len(text) - cjk_count
+    return max(1, cjk_count // 2 + ascii_count // 4)
 
 
 def truncate_observation(observation: str, max_tokens: int = 2000) -> str:

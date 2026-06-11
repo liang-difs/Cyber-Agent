@@ -174,6 +174,10 @@ class VulnScanTool:
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
+        # Sort by severity (critical > high > medium > low > info) before truncating
+        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+        findings.sort(key=lambda f: severity_order.get(f.get("severity", "info").lower(), 5))
+
         return ToolResult(
             success=True,
             tool_name=self.name,

@@ -1,4 +1,5 @@
 import client from './client';
+import { downloadBlob } from '../utils/helpers';
 
 export async function generateReport(params: {
   title?: string;
@@ -17,7 +18,7 @@ export async function generatePcapReport(params: {
   title?: string;
   time_window_hours?: number;
   analyst_notes?: string;
-  pcap_result: Record<string, any>;
+  pcap_result: Record<string, unknown>;
 }): Promise<string> {
   const { data } = await client.post('/reports/generate-pcap', params, {
     responseType: 'text',
@@ -42,7 +43,7 @@ export async function generatePcapReportHtml(params: {
   title?: string;
   time_window_hours?: number;
   analyst_notes?: string;
-  pcap_result: Record<string, any>;
+  pcap_result: Record<string, unknown>;
 }): Promise<string> {
   const { data } = await client.post('/reports/generate-pcap?format=html', params, {
     responseType: 'text',
@@ -50,76 +51,50 @@ export async function generatePcapReportHtml(params: {
   return data as unknown as string;
 }
 
-export async function downloadReportPdf(params: {
+type ReportParams = {
   title?: string;
   time_window_hours?: number;
   analyst_notes?: string;
   include_raw_data?: boolean;
   src_ip?: string;
-}, filename?: string): Promise<void> {
-  const { data } = await client.post('/reports/generate?format=pdf', params, {
-    responseType: 'blob',
-  });
-  const blob = new Blob([data], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'report.pdf';
-  a.click();
-  URL.revokeObjectURL(url);
-}
+};
 
-export async function downloadReportDocx(params: {
+type PcapReportParams = {
   title?: string;
   time_window_hours?: number;
   analyst_notes?: string;
-  include_raw_data?: boolean;
-  src_ip?: string;
-}, filename?: string): Promise<void> {
-  const { data } = await client.post('/reports/generate?format=docx', params, {
+  pcap_result: Record<string, unknown>;
+};
+
+async function downloadReport(
+  endpoint: string,
+  params: ReportParams | PcapReportParams,
+  format: 'pdf' | 'docx',
+  defaultFilename: string,
+  filename?: string,
+): Promise<void> {
+  const { data } = await client.post(`${endpoint}?format=${format}`, params, {
     responseType: 'blob',
   });
-  const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'report.docx';
-  a.click();
-  URL.revokeObjectURL(url);
+  const mimeType = format === 'pdf'
+    ? 'application/pdf'
+    : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const blob = new Blob([data], { type: mimeType });
+  downloadBlob(blob, filename || defaultFilename);
 }
 
-export async function downloadPcapReportPdf(params: {
-  title?: string;
-  time_window_hours?: number;
-  analyst_notes?: string;
-  pcap_result: Record<string, any>;
-}, filename?: string): Promise<void> {
-  const { data } = await client.post('/reports/generate-pcap?format=pdf', params, {
-    responseType: 'blob',
-  });
-  const blob = new Blob([data], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'pcap-report.pdf';
-  a.click();
-  URL.revokeObjectURL(url);
+export function downloadReportPdf(params: ReportParams, filename?: string): Promise<void> {
+  return downloadReport('/reports/generate', params, 'pdf', 'report.pdf', filename);
 }
 
-export async function downloadPcapReportDocx(params: {
-  title?: string;
-  time_window_hours?: number;
-  analyst_notes?: string;
-  pcap_result: Record<string, any>;
-}, filename?: string): Promise<void> {
-  const { data } = await client.post('/reports/generate-pcap?format=docx', params, {
-    responseType: 'blob',
-  });
-  const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'pcap-report.docx';
-  a.click();
-  URL.revokeObjectURL(url);
+export function downloadReportDocx(params: ReportParams, filename?: string): Promise<void> {
+  return downloadReport('/reports/generate', params, 'docx', 'report.docx', filename);
+}
+
+export function downloadPcapReportPdf(params: PcapReportParams, filename?: string): Promise<void> {
+  return downloadReport('/reports/generate-pcap', params, 'pdf', 'pcap-report.pdf', filename);
+}
+
+export function downloadPcapReportDocx(params: PcapReportParams, filename?: string): Promise<void> {
+  return downloadReport('/reports/generate-pcap', params, 'docx', 'pcap-report.docx', filename);
 }

@@ -17,7 +17,7 @@ from app.core.constants import (
     FULL_PLANNER_MAX_TIME,
     JWT_SECRET_MIN_LENGTH,
     JWT_ALGORITHM,
-    JWT_EXPIRY_HOURS,
+    JWT_EXPIRY_MINUTES,
     API_V1_PREFIX,
 )
 
@@ -39,7 +39,7 @@ def test_default_llm_timeout():
 
 
 def test_max_tool_calls():
-    assert DEFAULT_MAX_TOOL_CALLS == 4
+    assert DEFAULT_MAX_TOOL_CALLS == 10
 
 
 def test_context_window():
@@ -67,7 +67,7 @@ def test_full_planner_config():
 def test_jwt_config():
     assert JWT_SECRET_MIN_LENGTH == 32
     assert JWT_ALGORITHM == "HS256"
-    assert JWT_EXPIRY_HOURS == 24
+    assert JWT_EXPIRY_MINUTES == 60
 
 
 def test_api_prefix():

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/v1/cve", tags=["cve"])
 
@@ -40,5 +40,5 @@ async def get_cve(cve_id: str) -> dict[str, Any]:
     bm25 = _get_bm25()
     item = bm25.get_by_id(cve_id)
     if not item:
-        return {"error": "not_found", "cve_id": cve_id}
+        raise HTTPException(status_code=404, detail=f"CVE {cve_id} not found")
     return item

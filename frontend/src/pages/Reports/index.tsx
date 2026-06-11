@@ -4,6 +4,7 @@ import { Alert, Card, Form, Input, Button, Switch, Row, Col, message, Spin, Tabs
 import { DownloadOutlined, FileTextOutlined, UploadOutlined, PrinterOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
 import { generateReport, generatePcapReport, generateReportHtml, generatePcapReportHtml, downloadReportPdf, downloadReportDocx, downloadPcapReportPdf, downloadPcapReportDocx } from '../../api/report';
 import type { PcapResult } from '../../types/api';
 import { formatPcapReportTitle, getPcapDisplayFilename, PCAP_REPORT_STORAGE_KEY, type PcapReportSource } from '../../utils/pcapReport';
@@ -76,7 +77,7 @@ export default function Reports() {
       const md = await generatePcapReport({
         title: values.title || 'PCAP 安全事件报告',
         analyst_notes: values.analyst_notes || '',
-        pcap_result: pcapResult,
+        pcap_result: pcapResult as unknown as Record<string, unknown>,
       });
       setPcapMarkdown(md);
       message.success('PCAP 报告生成成功');
@@ -166,7 +167,7 @@ export default function Reports() {
       )}
       {md && (
         <div className="markdown-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{md}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{md}</ReactMarkdown>
         </div>
       )}
     </Card>

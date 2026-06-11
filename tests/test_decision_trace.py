@@ -233,7 +233,7 @@ class TestDecisionTracker:
         tracker.add_final_answer(trace_id=trace_id, answer="最终答案", confidence=0.9)
         tracker.end_trace(trace_id, success=True)
 
-        report = tracker.export_audit_report(trace_id, format="json")
+        report = tracker.export_audit_report(trace_id, fmt="json")
         assert report is not None
 
         report_data = json.loads(report)
@@ -247,7 +247,7 @@ class TestDecisionTracker:
         tracker.add_final_answer(trace_id=trace_id, answer="最终答案", confidence=0.9)
         tracker.end_trace(trace_id, success=True)
 
-        report = tracker.export_audit_report(trace_id, format="markdown")
+        report = tracker.export_audit_report(trace_id, fmt="markdown")
         assert report is not None
         assert "# 决策审计报告" in report
         assert "最终答案" in report
@@ -379,12 +379,12 @@ class TestIntegration:
         assert chain[3]["type"] == "final_answer"
 
         # Verify JSON export
-        json_report = tracker.export_audit_report(trace_id, format="json")
+        json_report = tracker.export_audit_report(trace_id, fmt="json")
         assert json_report is not None
         report_data = json.loads(json_report)
         assert report_data["success"] is True
 
         # Verify Markdown export
-        md_report = tracker.export_audit_report(trace_id, format="markdown")
+        md_report = tracker.export_audit_report(trace_id, fmt="markdown")
         assert md_report is not None
         assert "# 决策审计报告" in md_report

@@ -15,15 +15,13 @@ from app.core.security import verify_token
 
 logger = logging.getLogger(__name__)
 
-# Paths to skip logging (health checks, static, and high-frequency chat paths)
+# Paths to skip logging (health checks, static assets only)
 SKIP_PATHS = {
     "/health",
     "/metrics",
     "/docs",
     "/openapi.json",
     "/redoc",
-    "/api/v1/agent/chat",
-    "/api/v1/agent/sessions",
 }
 
 # Map HTTP methods to audit actions

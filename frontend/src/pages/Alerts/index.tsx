@@ -92,7 +92,7 @@ export default function Alerts() {
       // Async mode: poll for result
       const status = await pollTask(resp.task_id, { intervalMs: 1000, maxAttempts: 60 });
       if (status.status === 'SUCCESS' || status.status === 'SUCCEEDED') {
-        setTriageResult(status.result);
+        setTriageResult(status.result as unknown as AlertTriageOutcome);
         await fetchAlerts(alert.id);
         message.success('研判完成');
       } else if (status.status === 'FAILURE' || status.status === 'FAILED') {

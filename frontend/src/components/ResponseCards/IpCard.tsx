@@ -1,5 +1,6 @@
 import { Card, Tag, Table, Typography, Descriptions, Progress } from 'antd';
 import { GlobalOutlined, EnvironmentOutlined } from '@ant-design/icons';
+import { getScoreColor, parseNumericScore } from '../../utils/helpers';
 
 const { Text } = Typography;
 
@@ -19,13 +20,6 @@ interface IpData {
   dimensions: ScoreDimension[];
   fixSuggestions: string[];
   dataSources: string[];
-}
-
-function getScoreColor(score: number): string {
-  if (score >= 80) return '#f5222d';
-  if (score >= 60) return '#fa8c16';
-  if (score >= 40) return '#fadb14';
-  return '#52c41a';
 }
 
 function parseIpMarkdown(content: string): IpData | null {
@@ -89,11 +83,6 @@ function parseIpMarkdown(content: string): IpData | null {
   }
 
   return data.ip ? data : null;
-}
-
-function parseNumericScore(scoreStr: string): number {
-  const match = scoreStr.match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : 0;
 }
 
 export default function IpCard({ content }: { content: string }) {

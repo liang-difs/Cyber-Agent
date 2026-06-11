@@ -18,7 +18,7 @@ from pydantic import Field
 from app.core.config import get_settings
 from app.governance.tool_protocol import ToolInput, ToolResult
 
-IP_API_URL = "http://ip-api.com/json"
+IP_API_URL = "https://ip-api.com/json"
 ABUSEIPDB_URL = "https://api.abuseipdb.com/api/v2/check"
 CACHE_TTL = 7200  # 2 hours
 

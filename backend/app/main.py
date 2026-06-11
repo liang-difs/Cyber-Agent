@@ -40,6 +40,7 @@ from app.api.events import router as events_router
 from app.api.knowledge_graph import router as knowledge_graph_router
 from app.agent.context import context_manager
 from app.core.config import get_settings
+from app.core.constants import APP_VERSION
 
 
 @asynccontextmanager
@@ -98,8 +99,6 @@ async def lifespan(app: FastAPI):
             try:
                 from app.rag.bm25_search import bm25_instance
                 from app.rag.importer import sync_cves
-from app.core.config import get_settings
-from app.core.constants import APP_VERSION
                 settings = get_settings()
                 count = await sync_cves(bm25_instance, api_key=settings.nvd_api_key, since_hours=24)
                 if count:

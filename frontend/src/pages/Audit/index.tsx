@@ -88,8 +88,8 @@ export default function Audit() {
     {
       title: '状态码',
       key: 'status_code',
-      render: (_: any, record: AuditLog) => {
-        const code = record.detail?.status_code;
+      render: (_: unknown, record: AuditLog) => {
+        const code = record.detail?.status_code as number | undefined;
         if (!code) return '-';
         const color = code < 300 ? 'green' : code < 400 ? 'blue' : code < 500 ? 'orange' : 'red';
         return <Tag color={color}>{code}</Tag>;
@@ -98,7 +98,7 @@ export default function Audit() {
     {
       title: '耗时',
       key: 'duration',
-      render: (_: any, record: AuditLog) => {
+      render: (_: unknown, record: AuditLog) => {
         const ms = record.detail?.duration_ms;
         return ms != null ? `${ms}ms` : '-';
       },

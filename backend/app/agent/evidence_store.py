@@ -158,8 +158,11 @@ class EvidenceCollection:
 class EvidenceStore:
     """证据存储管理器（内存实现，按会话隔离）"""
 
+    MAX_COLLECTIONS = 200  # Maximum collections to keep in memory
+
     def __init__(self):
         self._collections: dict[str, EvidenceCollection] = {}
+        self._collection_order: list[str] = []
 
     def start_collection(
         self,
@@ -168,6 +171,11 @@ class EvidenceStore:
         target_type: str,
     ) -> EvidenceCollection:
         """开始一次新的证据收集"""
+        # Evict oldest collections if at capacity
+        while len(self._collections) >= self.MAX_COLLECTIONS:
+            oldest_id = self._collection_order.pop(0)
+            self._collections.pop(oldest_id, None)
+
         collection = EvidenceCollection(
             collection_id=collection_id,
             target=target,
@@ -175,6 +183,7 @@ class EvidenceStore:
             started_at=datetime.now().isoformat(),
         )
         self._collections[collection_id] = collection
+        self._collection_order.append(collection_id)
         return collection
 
     def get_collection(self, collection_id: str) -> Optional[EvidenceCollection]:

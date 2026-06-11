@@ -68,7 +68,16 @@ class RAGPipeline:
             doc_id = doc["id"]
             scores[doc_id] = scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
             if doc_id not in doc_map:
-                doc_map[doc_id] = {"id": doc_id, "document": doc.get("document", ""), "metadata": {}}
+                # Preserve BM25 metadata instead of creating empty stub
+                doc_map[doc_id] = {"id": doc_id, "document": doc.get("document", ""), "metadata": doc.get("metadata", {})}
+            else:
+                # Merge BM25 metadata into existing entry (fill gaps)
+                existing_meta = doc_map[doc_id].get("metadata", {})
+                bm25_meta = doc.get("metadata", {})
+                for key, val in bm25_meta.items():
+                    if key not in existing_meta:
+                        existing_meta[key] = val
+                doc_map[doc_id]["metadata"] = existing_meta
 
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         results = []

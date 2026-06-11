@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from app.agent.json_parser import parse_llm_json
 from app.agent.planner import generate_plan, build_plan_prompt, ExecutionPlan
+from app.sanitizer.pipeline import sanitizer
 from app.agent.context_compressor import (
     compact_tool_observation,
     should_compress,
@@ -21,6 +22,7 @@ from app.agent.context_compressor import (
 )
 from app.agent.decision_trace import decision_tracker
 from app.agent.loop_state import LoopState
+from app.llm.router import LLMRequest
 
 logger = logging.getLogger(__name__)
 
@@ -824,7 +826,6 @@ class ReActAgent:
                 )
 
             # Call LLM
-            from app.llm.router import LLMRequest
             request = LLMRequest(
                 messages=working_messages,
                 tools=None,  # ReAct uses prompt-based JSON, not native function calling
@@ -1000,8 +1001,10 @@ class ReActAgent:
                     decision_tracker.end_trace(trace_id, success=True)
                     return self._build_result(state, turn, True, final_answer, tool_calls_log)
 
-            # Truncate observation
+            # Truncate observation and sanitize PII
             obs_content = compact_tool_observation(tool_result, self.obs_max_tokens)
+            sanitize_result = sanitizer.sanitize(obs_content)
+            obs_content = sanitize_result.sanitized_text
 
             working_messages.append({
                 "role": "tool",
@@ -1045,6 +1048,8 @@ class ReActAgent:
         messages: list[dict[str, Any]],
         tenant_id: str,
         trace_id: str,
+        session_id: str = "",
+        user_id: str = "",
     ) -> AsyncIterator[TurnEvent]:
         """Execute ReAct loop with streaming events for WebSocket.
 
@@ -1056,13 +1061,26 @@ class ReActAgent:
         tool_calls_log: list[dict[str, Any]] = []
         state = LoopState()
 
+        # Start decision trace
+        query = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                query = str(msg.get("content", ""))
+                break
+        decision_tracker.start_trace(
+            trace_id=trace_id,
+            session_id=session_id or trace_id,
+            user_id=user_id or "unknown",
+            tenant_id=tenant_id,
+            query=query,
+        )
+
         for turn in range(1, self.max_turns + 1):
             if should_compress(len(working_messages), self.compress_interval):
                 working_messages = compress_history(
                     working_messages, keep_recent=self.compress_interval
                 )
 
-            from app.llm.router import LLMRequest
             request = LLMRequest(
                 messages=working_messages,
                 tools=None,  # ReAct uses prompt-based JSON, not native function calling
@@ -1129,6 +1147,8 @@ class ReActAgent:
                 while answer_yielded < len(answer_text):
                     yield TurnEvent(type="answer_token", turn=turn, content=answer_text[answer_yielded:answer_yielded+20])
                     answer_yielded += 20
+                decision_tracker.add_final_answer(trace_id=trace_id, answer=answer_text, confidence=parsed.get("confidence", 0.0))
+                decision_tracker.end_trace(trace_id, success=True)
                 return
 
             if parsed.get("error") == "parse_failed":
@@ -1176,6 +1196,19 @@ class ReActAgent:
 
             yield TurnEvent(type="thought", turn=turn, content={"thought": thought_text, "action": action, "tool_call_id": tool_call_id})
 
+            # Track thought in decision trace
+            if thought_text:
+                decision_tracker.add_thought(
+                    trace_id=trace_id, turn=turn, thought=thought_text,
+                    confidence=parsed.get("confidence", 0.0),
+                )
+
+            # Track tool action in decision trace
+            decision_tracker.add_action(
+                trace_id=trace_id, turn=turn, tool_name=action,
+                tool_input=action_input, confidence=parsed.get("confidence", 0.0),
+            )
+
             assistant_msg = {
                 "role": "assistant",
                 "content": accumulated,
@@ -1188,6 +1221,13 @@ class ReActAgent:
             yield TurnEvent(type="tool_call", turn=turn, content={"tool": action, "status": "running", "tool_call_id": tool_call_id})
 
             tool_result = await self.tools.execute(name=action, arguments=action_input, trace_id=trace_id, tenant_id=tenant_id)
+
+            # Track tool observation in decision trace
+            decision_tracker.add_observation(
+                trace_id=trace_id, turn=turn, tool_name=action,
+                tool_output=tool_result, confidence=tool_result.get("confidence", 0.0),
+                duration_ms=tool_result.get("execution_time_ms", 0),
+            )
 
             # Track tool call in state
             state.register_tool_call(call_key, action, tool_result, action_input)
@@ -1206,6 +1246,8 @@ class ReActAgent:
                     return
 
             obs_content = compact_tool_observation(tool_result, self.obs_max_tokens)
+            sanitize_result = sanitizer.sanitize(obs_content)
+            obs_content = sanitize_result.sanitized_text
 
             working_messages.append({"role": "tool", "content": obs_content, "tool_call_id": tool_call_id})
 
@@ -1235,5 +1277,7 @@ class ReActAgent:
 
         # Max turns reached - use state fallback
         fallback = state.get_fallback_answer()
+        decision_tracker.add_final_answer(trace_id=trace_id, answer=fallback, confidence=0.3)
+        decision_tracker.end_trace(trace_id, success=True)
         for i in range(0, len(fallback), 20):
             yield TurnEvent(type="answer_token", turn=self.max_turns, content=fallback[i:i+20])

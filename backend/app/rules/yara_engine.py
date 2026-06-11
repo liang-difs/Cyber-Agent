@@ -292,7 +292,7 @@ class YaraEngine:
                 rule=rule,
                 matched_strings=matched_strings,
                 offset=matches[0].offset if matches else 0,
-                length=matches[0].length if matches else 0,
+                length=sum(m.length for m in matches) if matches else 0,
                 confidence=confidence,
                 severity=rule.meta.get("severity", "medium"),
             )

@@ -138,7 +138,7 @@ export default function PcapAnalysis() {
         },
       });
       if (status.status === 'SUCCESS' || status.status === 'SUCCEEDED') {
-        setResult(status.result as PcapResult);
+        setResult(status.result as unknown as PcapResult);
         setProgressPercent(100);
         message.success('分析完成');
         return;

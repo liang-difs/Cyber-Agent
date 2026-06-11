@@ -27,6 +27,8 @@ from app.tools.rule_match_tool import rule_match_tool
 from app.tools.knowledge_graph_tool import knowledge_graph_tool
 from app.tools.response_action_tool import response_action_tool
 from app.tools.threat_intel_tool import threat_intel_tool
+from app.tools.planner_tool import planner_tool
+from app.tools.domain_tools import whois_lookup_tool, dns_lookup_tool, ssl_lookup_tool
 
 # Global registry instance
 tool_registry = ToolRegistry()
@@ -53,3 +55,7 @@ tool_registry.register(rule_match_tool)
 tool_registry.register(knowledge_graph_tool)
 tool_registry.register(response_action_tool)
 tool_registry.register(threat_intel_tool)
+tool_registry.register(planner_tool)
+tool_registry.register(whois_lookup_tool)
+tool_registry.register(dns_lookup_tool)
+tool_registry.register(ssl_lookup_tool)

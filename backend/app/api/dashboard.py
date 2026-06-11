@@ -232,9 +232,16 @@ async def get_dashboard(
     _perm: None = Depends(require_permission(Permission.ALERT_VIEW, auth=Depends(_get_current_user))),
 ):
     """Aggregated dashboard data: alerts, CVE, health, sessions."""
+    import asyncio
     tenant_id = scoped_tenant(user)
 
-    alerts, cve_stats, health, session_count = await _get_alert_stats(tenant_id), _get_cve_stats(), await _get_health_summary(), await _get_session_count(tenant_id)
+    # _get_cve_stats is sync, wrap in to_thread for parallel execution
+    alerts, cve_stats, health, session_count = await asyncio.gather(
+        _get_alert_stats(tenant_id),
+        asyncio.to_thread(_get_cve_stats),
+        _get_health_summary(),
+        _get_session_count(tenant_id),
+    )
 
     return {
         "alerts": alerts,

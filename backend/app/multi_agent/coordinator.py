@@ -88,18 +88,19 @@ class Coordinator(BaseAgent):
             results = await self._execute_plan(plan)
 
             # 追踪：记录每步结果
-            for step_result in results:
+            for step_id, step_result in results.items():
                 tracker.add_action(
                     trace_id=task.task_id,
-                    turn=step_result.metadata.get("step_id", 0),
+                    turn=step_id,
                     tool_name=step_result.metadata.get("action", "unknown"),
                     tool_input=step_result.metadata.get("parameters", {}),
                     confidence=0.8 if step_result.success else 0.2,
                 )
                 tracker.add_observation(
                     trace_id=task.task_id,
-                    turn=step_result.metadata.get("step_id", 0),
-                    observation=str(step_result.result)[:500] if step_result.success else step_result.error,
+                    turn=step_id,
+                    tool_name=step_result.metadata.get("action", "unknown"),
+                    tool_output={"success": step_result.success, "result": str(step_result.result)[:500] if step_result.success else step_result.error},
                     confidence=0.9 if step_result.success else 0.1,
                 )
 
@@ -844,10 +845,23 @@ class Coordinator(BaseAgent):
         agent_instance._current_task = task.task_id
         agent_instance.update_load(0.8)
         try:
-            result = await agent_instance.execute_task(task_request)
+            import asyncio
+            result = await asyncio.wait_for(
+                agent_instance.execute_task(task_request),
+                timeout=120,  # 2-minute timeout per agent step
+            )
             if result.execution_time_ms <= 0:
                 result.execution_time_ms = int((time.time() - start_agent_time) * 1000)
             return result
+        except asyncio.TimeoutError:
+            from multi_agent.base_agent import TaskResult, TaskStatus
+            return TaskResult(
+                task_id=task.task_id,
+                status=TaskStatus.FAILED,
+                output={},
+                execution_time_ms=int((time.time() - start_agent_time) * 1000),
+                error="Agent step timed out after 120s",
+            )
         finally:
             agent_instance._current_task = previous_task
             agent_instance.update_load(0.0)
@@ -928,10 +942,10 @@ class Coordinator(BaseAgent):
         }
 
         if failed:
-            aggregated["summary"] = f"???????{len(successful)}/{len(results)} ????"
+            aggregated["summary"] = f"任务完成 {len(successful)}/{len(results)} 步成功"
             aggregated["status"] = "partial"
         else:
-            aggregated["summary"] = f"??????? {len(results)} ???????"
+            aggregated["summary"] = f"任务完成 共 {len(results)} 步全部成功"
             aggregated["status"] = "completed"
 
         return aggregated

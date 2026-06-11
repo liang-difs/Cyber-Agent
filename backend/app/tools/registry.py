@@ -99,6 +99,9 @@ class ToolRegistry:
                 logger.info("Tool '%s': mapped argument '%s' → '%s'", tool_name, wrong_name, correct_name)
         return normalized
 
+    # Default tool execution timeout in seconds
+    EXECUTION_TIMEOUT = 60
+
     async def execute(self, name: str, arguments: dict[str, Any], trace_id: str, tenant_id: str = "system") -> dict[str, Any]:
         """Execute a tool with optional caching and retry.
 
@@ -160,11 +163,28 @@ class ToolRegistry:
             ).model_dump()
 
         # Execute with retry if configured
+        import asyncio
         retry_config = self._get_retry_config(name)
         if retry_config:
             from app.agent.retry import retry_async
             try:
-                result = await retry_async(tool.execute, input_data, config=retry_config)
+                result = await asyncio.wait_for(
+                    retry_async(tool.execute, input_data, config=retry_config),
+                    timeout=self.EXECUTION_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.error("Tool '%s' execution timed out after %ds", name, self.EXECUTION_TIMEOUT)
+                return ToolResult(
+                    success=False,
+                    tool_name=name,
+                    tool_version="v1",
+                    data={"raw_arguments": arguments},
+                    error=f"工具执行超时 ({self.EXECUTION_TIMEOUT}s)",
+                    confidence=0.0,
+                    evidence_source=[],
+                    trace_id=trace_id,
+                    execution_time_ms=self.EXECUTION_TIMEOUT * 1000,
+                ).model_dump()
             except Exception as e:
                 logger.error("Tool '%s' execution failed after retries: %s", name, e)
                 return ToolResult(
@@ -179,7 +199,24 @@ class ToolRegistry:
                     execution_time_ms=0,
                 ).model_dump()
         else:
-            result = await tool.execute(input_data)
+            try:
+                result = await asyncio.wait_for(
+                    tool.execute(input_data),
+                    timeout=self.EXECUTION_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.error("Tool '%s' execution timed out after %ds", name, self.EXECUTION_TIMEOUT)
+                return ToolResult(
+                    success=False,
+                    tool_name=name,
+                    tool_version="v1",
+                    data={"raw_arguments": arguments},
+                    error=f"工具执行超时 ({self.EXECUTION_TIMEOUT}s)",
+                    confidence=0.0,
+                    evidence_source=[],
+                    trace_id=trace_id,
+                    execution_time_ms=self.EXECUTION_TIMEOUT * 1000,
+                ).model_dump()
 
         result_dict = result.model_dump()
 

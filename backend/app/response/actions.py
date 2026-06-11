@@ -94,6 +94,7 @@ class BlockIPAction(BaseAction):
     async def execute(self, params: dict[str, Any]) -> ActionResult:
         """执行IP阻断"""
         import time
+        import re
         start_time = time.time()
 
         ip = params.get("ip")
@@ -109,57 +110,78 @@ class BlockIPAction(BaseAction):
                 message="IP address is required",
             )
 
+        # Validate IP format to prevent command injection
+        if not re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", ip):
+            return ActionResult(
+                action_id=self.action_id,
+                action_type=self.action_type,
+                status=ActionStatus.FAILED,
+                success=False,
+                message=f"Invalid IP address format: {ip}",
+            )
+
         try:
-            # 实际阻断：尝试调用本地防火墙命令
             logger.info("Blocking IP %s for %d seconds. Reason: %s", ip, duration, reason)
 
             import platform
             import asyncio
 
             blocked = False
+            block_method = "record_only"
+            stderr_output = ""
+
             system = platform.system().lower()
-
             if system == "windows":
-                # Windows: netsh advfirewall
-                cmd = f'netsh advfirewall firewall add rule name="CyberSec_Block_{ip}" dir=in action=block remoteip={ip}'
-                proc = await asyncio.create_subprocess_shell(
-                    cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                cmd = ["netsh", "advfirewall", "firewall", "add", "rule",
+                       f"name=CyberSec_Block_{ip}", "dir=in", "action=block", f"remoteip={ip}"]
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
-                await proc.wait()
+                _, stderr = await proc.communicate()
                 blocked = proc.returncode == 0
+                stderr_output = stderr.decode(errors="ignore")
+                block_method = "netsh_advfirewall"
             elif system == "linux":
-                # Linux: iptables
-                cmd = f"iptables -A INPUT -s {ip} -j DROP"
-                proc = await asyncio.create_subprocess_shell(
-                    cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                cmd = ["iptables", "-A", "INPUT", "-s", ip, "-j", "DROP"]
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
-                await proc.wait()
+                _, stderr = await proc.communicate()
                 blocked = proc.returncode == 0
+                stderr_output = stderr.decode(errors="ignore")
+                block_method = "iptables"
 
-            if not blocked:
-                logger.warning("Firewall command failed or unsupported OS, recording block in database only")
-
-            # 保存回滚数据
-            self._rollback_data = {"ip": ip, "action": "unblock"}
+            self._rollback_data = {"ip": ip, "action": "unblock", "method": block_method}
             self._executed = True
-
             execution_time = int((time.time() - start_time) * 1000)
 
-            return ActionResult(
-                action_id=self.action_id,
-                action_type=self.action_type,
-                status=ActionStatus.SUCCESS,
-                success=True,
-                message=f"Successfully blocked IP {ip}",
-                details={
-                    "ip": ip,
-                    "duration_seconds": duration,
-                    "reason": reason,
-                    "method": "firewall_rule",
-                },
-                execution_time_ms=execution_time,
-                rollback_available=True,
-            )
+            if blocked:
+                return ActionResult(
+                    action_id=self.action_id,
+                    action_type=self.action_type,
+                    status=ActionStatus.SUCCESS,
+                    success=True,
+                    message=f"已阻断 IP {ip}（{block_method}）",
+                    details={"ip": ip, "duration_seconds": duration, "reason": reason, "method": block_method},
+                    execution_time_ms=execution_time,
+                    rollback_available=True,
+                )
+            else:
+                # 命令执行失败，记录为待人工处理
+                return ActionResult(
+                    action_id=self.action_id,
+                    action_type=self.action_type,
+                    status=ActionStatus.SUCCESS,
+                    success=True,
+                    message=f"已记录阻断请求：IP {ip}（需管理员权限执行防火墙规则）",
+                    details={
+                        "ip": ip, "duration_seconds": duration, "reason": reason,
+                        "method": block_method, "pending_manual": True,
+                        "error": stderr_output[:200] if stderr_output else "权限不足或命令不可用",
+                    },
+                    execution_time_ms=execution_time,
+                    rollback_available=True,
+                )
 
         except Exception as e:
             logger.error("Failed to block IP %s: %s", ip, e)
@@ -168,7 +190,7 @@ class BlockIPAction(BaseAction):
                 action_type=self.action_type,
                 status=ActionStatus.FAILED,
                 success=False,
-                message=f"Failed to block IP: {str(e)}",
+                message=f"阻断 IP 失败: {str(e)}",
                 execution_time_ms=int((time.time() - start_time) * 1000),
             )
 
@@ -184,16 +206,68 @@ class BlockIPAction(BaseAction):
             )
 
         ip = self._rollback_data.get("ip")
-        logger.info("Unblocking IP %s", ip)
+        block_method = self._rollback_data.get("block_method", "record_only")
+        logger.info("Unblocking IP %s (method: %s)", ip, block_method)
 
-        return ActionResult(
-            action_id=self.action_id,
-            action_type=self.action_type,
-            status=ActionStatus.ROLLED_BACK,
-            success=True,
-            message=f"Successfully unblocked IP {ip}",
-            details={"ip": ip, "action": "unblocked"},
-        )
+        if block_method == "record_only":
+            return ActionResult(
+                action_id=self.action_id,
+                action_type=self.action_type,
+                status=ActionStatus.ROLLED_BACK,
+                success=True,
+                message=f"Record-only block for {ip} — no firewall rule to remove",
+                details={"ip": ip, "action": "unblocked", "method": "record_only"},
+            )
+
+        try:
+            import platform
+            import asyncio
+            import re
+
+            if not ip or not re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", ip):
+                return ActionResult(
+                    action_id=self.action_id,
+                    action_type=self.action_type,
+                    status=ActionStatus.FAILED,
+                    success=False,
+                    message=f"Invalid IP for rollback: {ip}",
+                )
+
+            system = platform.system().lower()
+            unblocked = False
+            if system == "windows":
+                cmd = ["netsh", "advfirewall", "firewall", "delete", "rule",
+                       f"name=CyberSec_Block_{ip}"]
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
+                await proc.communicate()
+                unblocked = proc.returncode == 0
+            elif system == "linux":
+                cmd = ["iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"]
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
+                await proc.communicate()
+                unblocked = proc.returncode == 0
+
+            return ActionResult(
+                action_id=self.action_id,
+                action_type=self.action_type,
+                status=ActionStatus.ROLLED_BACK if unblocked else ActionStatus.FAILED,
+                success=unblocked,
+                message=f"{'Successfully unblocked' if unblocked else 'Failed to unblock'} IP {ip}",
+                details={"ip": ip, "action": "unblocked" if unblocked else "unblock_failed", "method": block_method},
+            )
+        except Exception as e:
+            logger.error("Failed to unblock IP %s: %s", ip, e)
+            return ActionResult(
+                action_id=self.action_id,
+                action_type=self.action_type,
+                status=ActionStatus.FAILED,
+                success=False,
+                message=f"Failed to unblock IP {ip}: {e}",
+            )
 
 
 class IsolateHostAction(BaseAction):
@@ -213,7 +287,7 @@ class IsolateHostAction(BaseAction):
         start_time = time.time()
 
         host = params.get("host")
-        isolation_type = params.get("isolation_type", "network")  # network, full
+        isolation_type = params.get("isolation_type", "network")
         reason = params.get("reason", "Security incident detected")
 
         if not host:
@@ -226,13 +300,10 @@ class IsolateHostAction(BaseAction):
             )
 
         try:
-            # 模拟隔离操作（实际实现需要调用EDR/网络设备API）
             logger.info("Isolating host %s (type: %s). Reason: %s", host, isolation_type, reason)
 
-            # 保存回滚数据
             self._rollback_data = {"host": host, "action": "restore"}
             self._executed = True
-
             execution_time = int((time.time() - start_time) * 1000)
 
             return ActionResult(
@@ -240,12 +311,10 @@ class IsolateHostAction(BaseAction):
                 action_type=self.action_type,
                 status=ActionStatus.SUCCESS,
                 success=True,
-                message=f"Successfully isolated host {host}",
+                message=f"已记录隔离请求：主机 {host}（需 EDR/网络设备执行）",
                 details={
-                    "host": host,
-                    "isolation_type": isolation_type,
-                    "reason": reason,
-                    "method": "edr_isolation",
+                    "host": host, "isolation_type": isolation_type, "reason": reason,
+                    "method": "pending_edr", "pending_manual": True,
                 },
                 execution_time_ms=execution_time,
                 rollback_available=True,
@@ -258,7 +327,7 @@ class IsolateHostAction(BaseAction):
                 action_type=self.action_type,
                 status=ActionStatus.FAILED,
                 success=False,
-                message=f"Failed to isolate host: {str(e)}",
+                message=f"隔离主机失败: {str(e)}",
                 execution_time_ms=int((time.time() - start_time) * 1000),
             )
 
@@ -407,7 +476,6 @@ class QuarantineFileAction(BaseAction):
             )
 
         try:
-            # 实际隔离：移动文件到隔离目录
             logger.info("Quarantining file %s on host %s. Reason: %s", file_path, host, reason)
 
             import shutil
@@ -417,35 +485,46 @@ class QuarantineFileAction(BaseAction):
             quarantine_dir.mkdir(parents=True, exist_ok=True)
 
             src = Path(file_path)
+            moved = False
+            dst = None
+
             if src.exists():
                 dst = quarantine_dir / f"{src.name}.quarantined"
-                # 避免覆盖
                 if dst.exists():
                     dst = quarantine_dir / f"{src.name}.{self.action_id[:8]}.quarantined"
                 shutil.move(str(src), str(dst))
                 logger.info("File moved to quarantine: %s", dst)
-                self._rollback_data = {"original_path": str(src), "quarantine_path": str(dst)}
+                moved = True
 
-            self._rollback_data = {"file_path": file_path, "host": host, "action": "restore"}
+            self._rollback_data = {
+                "file_path": file_path, "host": host, "action": "restore",
+                "original_path": str(src), "quarantine_path": str(dst) if dst else None,
+            }
             self._executed = True
-
             execution_time = int((time.time() - start_time) * 1000)
 
-            return ActionResult(
-                action_id=self.action_id,
-                action_type=self.action_type,
-                status=ActionStatus.SUCCESS,
-                success=True,
-                message=f"Successfully quarantined file {file_path}",
-                details={
-                    "file_path": file_path,
-                    "host": host,
-                    "reason": reason,
-                    "method": "edr_quarantine",
-                },
-                execution_time_ms=execution_time,
-                rollback_available=True,
-            )
+            if moved:
+                return ActionResult(
+                    action_id=self.action_id,
+                    action_type=self.action_type,
+                    status=ActionStatus.SUCCESS,
+                    success=True,
+                    message=f"已隔离文件 {file_path} → {dst}",
+                    details={"file_path": file_path, "host": host, "reason": reason, "method": "local_quarantine", "quarantine_path": str(dst)},
+                    execution_time_ms=execution_time,
+                    rollback_available=True,
+                )
+            else:
+                return ActionResult(
+                    action_id=self.action_id,
+                    action_type=self.action_type,
+                    status=ActionStatus.SUCCESS,
+                    success=True,
+                    message=f"已记录隔离请求：{file_path}（文件不存在或不可访问）",
+                    details={"file_path": file_path, "host": host, "reason": reason, "method": "record_only", "pending_manual": True},
+                    execution_time_ms=execution_time,
+                    rollback_available=False,
+                )
 
         except Exception as e:
             logger.error("Failed to quarantine file %s: %s", file_path, e)
@@ -454,7 +533,7 @@ class QuarantineFileAction(BaseAction):
                 action_type=self.action_type,
                 status=ActionStatus.FAILED,
                 success=False,
-                message=f"Failed to quarantine file: {str(e)}",
+                message=f"隔离文件失败: {str(e)}",
                 execution_time_ms=int((time.time() - start_time) * 1000),
             )
 
@@ -470,16 +549,51 @@ class QuarantineFileAction(BaseAction):
             )
 
         file_path = self._rollback_data.get("file_path")
+        quarantine_path = self._rollback_data.get("quarantine_path")
         host = self._rollback_data.get("host")
-        logger.info("Restoring file %s on host %s", file_path, host)
+        method = self._rollback_data.get("method", "record_only")
+        logger.info("Restoring file %s on host %s (method: %s)", file_path, host, method)
+
+        if method == "record_only":
+            return ActionResult(
+                action_id=self.action_id,
+                action_type=self.action_type,
+                status=ActionStatus.ROLLED_BACK,
+                success=True,
+                message=f"Record-only quarantine for {file_path} — no file to restore",
+                details={"file_path": file_path, "host": host, "action": "restored", "method": "record_only"},
+            )
+
+        if quarantine_path:
+            try:
+                import shutil
+                import os
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                shutil.move(quarantine_path, file_path)
+                return ActionResult(
+                    action_id=self.action_id,
+                    action_type=self.action_type,
+                    status=ActionStatus.ROLLED_BACK,
+                    success=True,
+                    message=f"Successfully restored file {file_path}",
+                    details={"file_path": file_path, "host": host, "action": "restored"},
+                )
+            except Exception as e:
+                logger.error("Failed to restore file %s: %s", file_path, e)
+                return ActionResult(
+                    action_id=self.action_id,
+                    action_type=self.action_type,
+                    status=ActionStatus.FAILED,
+                    success=False,
+                    message=f"Failed to restore file {file_path}: {e}",
+                )
 
         return ActionResult(
             action_id=self.action_id,
             action_type=self.action_type,
-            status=ActionStatus.ROLLED_BACK,
-            success=True,
-            message=f"Successfully restored file {file_path}",
-            details={"file_path": file_path, "host": host, "action": "restored"},
+            status=ActionStatus.FAILED,
+            success=False,
+            message=f"No quarantine path recorded for {file_path}",
         )
 
 
@@ -512,12 +626,10 @@ class DisableAccountAction(BaseAction):
             )
 
         try:
-            # 模拟账户禁用（实际实现需要调用LDAP/AD API）
             logger.info("Disabling account %s. Reason: %s", username, reason)
 
             self._rollback_data = {"username": username, "action": "enable"}
             self._executed = True
-
             execution_time = int((time.time() - start_time) * 1000)
 
             return ActionResult(
@@ -525,11 +637,10 @@ class DisableAccountAction(BaseAction):
                 action_type=self.action_type,
                 status=ActionStatus.SUCCESS,
                 success=True,
-                message=f"Successfully disabled account {username}",
+                message=f"已记录禁用请求：账户 {username}（需 LDAP/AD 执行）",
                 details={
-                    "username": username,
-                    "reason": reason,
-                    "method": "ldap_disable",
+                    "username": username, "reason": reason,
+                    "method": "pending_ldap", "pending_manual": True,
                 },
                 execution_time_ms=execution_time,
                 rollback_available=True,
@@ -542,7 +653,7 @@ class DisableAccountAction(BaseAction):
                 action_type=self.action_type,
                 status=ActionStatus.FAILED,
                 success=False,
-                message=f"Failed to disable account: {str(e)}",
+                message=f"禁用账户失败: {str(e)}",
                 execution_time_ms=int((time.time() - start_time) * 1000),
             )
 

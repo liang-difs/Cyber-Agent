@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import get_current_user, scoped_tenant
 from app.rbac.permissions import Permission, require_permission
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/audit", tags=["audit"])
 

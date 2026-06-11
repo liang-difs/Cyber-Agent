@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
 import CveCard from './CveCard';
 import CveCatalogCard from './CveCatalogCard';
 import IocCard from './IocCard';
@@ -26,7 +27,7 @@ export default function ResponseCards({ content, streaming = false, responseType
   if (streaming) {
     return (
       <div className={`markdown-body ${streaming ? 'streaming-cursor' : ''}`}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{content}</ReactMarkdown>
       </div>
     );
   }
@@ -45,7 +46,7 @@ export default function ResponseCards({ content, streaming = false, responseType
     default:
       return (
         <div className="markdown-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{content}</ReactMarkdown>
         </div>
       );
   }

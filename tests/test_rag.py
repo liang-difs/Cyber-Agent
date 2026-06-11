@@ -321,10 +321,16 @@ class TestBM25Search:
             assert results[0]["id"] == "a"
 
     def test_tokenize(self):
-        """Tokenization lowercases and extracts alphanumeric tokens."""
+        """Tokenization preserves hyphenated identifiers and extracts sub-tokens."""
         from app.rag.bm25_search import BM25Search
         tokens = BM25Search._tokenize("CVE-2024-3400: SQL Injection!")
-        assert tokens == ["cve", "2024", "3400", "sql", "injection"]
+        # Hyphenated token preserved + sub-parts added
+        assert "cve-2024-3400" in tokens
+        assert "cve" in tokens
+        assert "2024" in tokens
+        assert "3400" in tokens
+        assert "sql" in tokens
+        assert "injection" in tokens
 
 
 # ---------------------------------------------------------------------------

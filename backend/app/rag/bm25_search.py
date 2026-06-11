@@ -118,7 +118,16 @@ class BM25Search:
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        return re.findall(r"[a-z0-9]+", text.lower())
+        # Preserve hyphenated identifiers like CVE-2024-1234 as complete tokens
+        # Also extract individual sub-tokens for partial matching
+        tokens = []
+        for match in re.finditer(r"[A-Za-z]+-[\w-]+|\w+", text):
+            token = match.group().lower()
+            tokens.append(token)
+            # For hyphenated tokens like "cve-2024-1234", also add sub-parts
+            if "-" in token:
+                tokens.extend(token.split("-"))
+        return tokens
 
 
 # Module-level singleton instance shared across the app

@@ -314,31 +314,46 @@ class SigmaEngine:
         return value
 
     def _evaluate_condition(self, condition: str, results: dict[str, bool]) -> bool:
-        """评估条件表达式"""
-        # 简化实现：支持AND、OR、NOT
+        """评估条件表达式 — 支持 AND、OR、NOT 和嵌套括号"""
         condition = condition.strip()
 
-        # 处理括号
-        if "(" in condition:
-            # 简化处理：不支持复杂嵌套
-            pass
+        # Handle parentheses by finding matching pairs
+        while "(" in condition:
+            # Find the innermost parenthesized group
+            start = condition.rfind("(")
+            end = condition.find(")", start)
+            if end == -1:
+                break
+            inner = condition[start + 1:end]
+            inner_result = self._evaluate_condition(inner, results)
+            # Replace the parenthesized expression with its result
+            condition = condition[:start] + ("__TRUE__" if inner_result else "__FALSE__") + condition[end + 1:]
 
-        # 处理NOT
+        # Handle NOT
         if condition.startswith("not "):
             inner = condition[4:].strip()
             return not self._evaluate_condition(inner, results)
+        if condition.startswith("NOT "):
+            inner = condition[4:].strip()
+            return not self._evaluate_condition(inner, results)
 
-        # 处理AND
+        # Handle AND (lower precedence than OR in some Sigma flavors, but we use standard left-to-right)
         if " and " in condition:
-            parts = condition.split(" and ")
-            return all(self._evaluate_condition(part.strip(), results) for part in parts)
+            parts = condition.split(" and ", 1)
+            return self._evaluate_condition(parts[0], results) and self._evaluate_condition(parts[1], results)
 
-        # 处理OR
+        # Handle OR
         if " or " in condition:
-            parts = condition.split(" or ")
-            return any(self._evaluate_condition(part.strip(), results) for part in parts)
+            parts = condition.split(" or ", 1)
+            return self._evaluate_condition(parts[0], results) or self._evaluate_condition(parts[1], results)
 
-        # 直接匹配选择器名
+        # Handle placeholder results from parenthesized sub-expressions
+        if condition == "__TRUE__":
+            return True
+        if condition == "__FALSE__":
+            return False
+
+        # Direct selector match
         return results.get(condition, False)
 
     def _calculate_confidence(self, rule: SigmaRule, matched_conditions: list[str]) -> float:
@@ -488,6 +503,84 @@ detection:
 falsepositives:
   - User forgetting password
 level: high
+---
+title: SSH Authentication Failure
+id: 00000000-0000-0000-0000-000000000021
+status: experimental
+description: Detects SSH authentication failure events (single or multiple)
+author: CyberSec Agent
+date: 2026/06/07
+tags:
+  - attack.credential_access
+  - attack.t1110.004
+logsource:
+  category: authentication
+  service: ssh
+detection:
+  selection:
+    EventType: 'login_failure'
+  condition: selection
+falsepositives:
+  - Misconfigured SSH client
+level: medium
+---
+title: SSH Root Login Attempt
+id: 00000000-0000-0000-0000-000000000022
+status: experimental
+description: Detects SSH login attempts targeting root account
+author: CyberSec Agent
+date: 2026/06/07
+tags:
+  - attack.credential_access
+  - attack.t1110.004
+logsource:
+  category: authentication
+  service: ssh
+detection:
+  selection_event:
+    EventType: 'login_failure'
+    user: 'root'
+  selection_raw:
+    raw|contains:
+      - 'Failed password for root'
+      - 'Failed password for invalid user root'
+  condition: selection_event or selection_raw
+falsepositives:
+  - Legitimate root SSH access
+level: high
+---
+title: SSH Login from External IP
+id: 00000000-0000-0000-0000-000000000023
+status: experimental
+description: Detects SSH login attempts from external (non-RFC1918) IPs
+author: CyberSec Agent
+date: 2026/06/07
+tags:
+  - attack.initial_access
+  - attack.t1078
+logsource:
+  category: authentication
+  service: ssh
+detection:
+  selection:
+    EventType:
+      - 'login_failure'
+      - 'login_success'
+  filter_private:
+    src_ip|startswith:
+      - '10.'
+      - '192.168.'
+      - '172.16.'
+      - '172.17.'
+      - '172.18.'
+      - '172.19.'
+      - '172.2'
+      - '172.3'
+      - '127.'
+  condition: selection and not filter_private
+falsepositives:
+  - Legitimate remote SSH access
+level: medium
 ---
 title: Encoded PowerShell Command
 id: 00000000-0000-0000-0000-000000000004

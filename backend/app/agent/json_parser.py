@@ -16,7 +16,7 @@ from typing import Any
 
 
 def parse_llm_json(raw: str) -> dict[str, Any]:
-    """Parse LLM output into JSON with 5-level fallback."""
+    """Parse LLM output into JSON with 6-level fallback."""
     raw = raw.strip()
     if not raw:
         return {"error": "parse_failed", "raw": raw}
@@ -41,7 +41,12 @@ def parse_llm_json(raw: str) -> dict[str, Any]:
     if result is not None:
         return result
 
-    # Level 5: Structured fallback
+    # Level 5: Extract final_answer from malformed JSON
+    result = _try_extract_final_answer(raw)
+    if result is not None:
+        return result
+
+    # Level 6: Structured fallback
     return {"error": "parse_failed", "raw": raw}
 
 
@@ -111,5 +116,47 @@ def _try_fix_and_parse(raw: str) -> dict[str, Any] | None:
     result = _try_loose_braces(fixed)
     if result is not None:
         return result
+
+    return None
+
+
+def _try_extract_final_answer(raw: str) -> dict[str, Any] | None:
+    """Level 5: Extract final_answer from malformed JSON.
+
+    When the LLM produces output like:
+    {"final_answer": "long text with unescaped quotes...", "confidence": 0.8}
+    where the inner text breaks JSON parsing, try to extract the answer directly.
+    """
+    if '"final_answer"' not in raw and "final_answer" not in raw:
+        return None
+
+    # Extract confidence
+    confidence = 0.5
+    conf_match = re.search(r'"confidence"\s*:\s*([\d.]+)', raw)
+    if conf_match:
+        try:
+            confidence = float(conf_match.group(1))
+        except ValueError:
+            pass
+
+    # Extract evidence
+    evidence: list[str] = []
+    ev_match = re.search(r'"evidence"\s*:\s*\[(.*?)\]', raw, re.DOTALL)
+    if ev_match:
+        for m in re.finditer(r'"([^"]+)"', ev_match.group(1)):
+            evidence.append(m.group(1))
+
+    # Extract answer text
+    answer = None
+    m = re.search(r'"final_answer"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)
+    if m:
+        answer = m.group(1)
+    if not answer:
+        m = re.search(r'"final_answer"\s*:\s*"(.+)', raw)
+        if m:
+            answer = re.sub(r'",?\s*"(confidence|evidence)".*$', '', m.group(1), flags=re.DOTALL).rstrip('"').rstrip()
+
+    if answer and len(answer) > 10:
+        return {"final_answer": answer, "confidence": confidence, "evidence": evidence}
 
     return None

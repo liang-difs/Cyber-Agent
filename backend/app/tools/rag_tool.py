@@ -53,8 +53,21 @@ class RAGTool:
 
     async def execute(self, input_data: RAGInput) -> ToolResult:
         start = time.time()
-        pipeline = self._get_pipeline()
-        results = pipeline.retrieve(input_data.query, top_k=4)
+        try:
+            pipeline = self._get_pipeline()
+            results = pipeline.retrieve(input_data.query, top_k=4)
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                tool_name=self.name,
+                tool_version=self.version,
+                data={"query": input_data.query, "results": [], "found": False},
+                error=f"RAG retrieval failed: {e}",
+                confidence=0.0,
+                evidence_source=["rag_pipeline"],
+                trace_id=input_data.trace_id,
+                execution_time_ms=int((time.time() - start) * 1000),
+            )
 
         if not results:
             return ToolResult(

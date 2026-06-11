@@ -6,12 +6,13 @@ from httpx import AsyncClient, ASGITransport
 
 from app.main import app
 from app.core.security import create_access_token
+from app.core.config import get_settings
 
 
 def auth_headers() -> dict[str, str]:
     token = create_access_token(
         {"sub": "user-001", "role": "analyst", "tenant_id": "test"},
-        secret="",
+        secret=get_settings().jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
 

@@ -6,6 +6,7 @@ from httpx import AsyncClient, ASGITransport
 
 from app.main import app
 from app.core.security import create_access_token
+from app.core.config import get_settings
 from app.api.chat import (
     _extract_pcap_path,
     _extract_attachment_pcap_path,
@@ -26,7 +27,7 @@ def anyio_backend():
 def auth_token():
     return create_access_token(
         {"sub": "user-001", "role": "analyst", "tenant_id": "tenant-1"},
-        secret="",
+        secret=get_settings().jwt_secret,
     )
 
 

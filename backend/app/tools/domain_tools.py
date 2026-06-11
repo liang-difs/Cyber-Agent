@@ -441,13 +441,21 @@ class SslLookupTool:
     def _get_cert(domain: str, port: int) -> dict[str, Any]:
         """获取 SSL 证书信息"""
         context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
 
         with socket.create_connection((domain, port), timeout=10) as sock:
-            with context.wrap_socket(sock, server_hostname=domain) as ssock:
-                cert = ssock.getpeercert(binary_form=False)
-                cert_bin = ssock.getpeercert(binary_form=True)
+            try:
+                with context.wrap_socket(sock, server_hostname=domain) as ssock:
+                    cert = ssock.getpeercert(binary_form=False)
+                    cert_bin = ssock.getpeercert(binary_form=True)
+            except ssl.SSLCertVerificationError:
+                # Fallback for self-signed certs: connect without verification but flag it
+                context2 = ssl.create_default_context()
+                context2.check_hostname = False
+                context2.verify_mode = ssl.CERT_NONE
+                with context2.wrap_socket(sock, server_hostname=domain) as ssock:
+                    cert = ssock.getpeercert(binary_form=False)
+                    cert_bin = ssock.getpeercert(binary_form=True)
+                return {"_self_signed": True, "_raw_cert": cert, "_cert_bin": cert_bin}
 
                 # 解析证书信息
                 def parse_name(name_tuples):

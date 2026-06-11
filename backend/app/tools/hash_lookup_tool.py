@@ -143,10 +143,18 @@ class HashLookupTool:
         hash_type = _detect_hash_type(hash_val)
         sources = [s.strip().lower() for s in input_data.sources.split(",")]
         results: list[dict[str, Any]] = []
+
+        # Run VT and MB queries in parallel
+        import asyncio
+        tasks = []
         if "vt" in sources:
-            results.append(await _query_virustotal(hash_val))
+            tasks.append(_query_virustotal(hash_val))
         if "mb" in sources:
-            results.append(await _query_malwarebazaar(hash_val))
+            tasks.append(_query_malwarebazaar(hash_val))
+        if tasks:
+            results = list(await asyncio.gather(*tasks, return_exceptions=True))
+            # Filter out exceptions
+            results = [r for r in results if isinstance(r, dict)]
         malicious_count = 0
         total_engines = 0
         for r in results:

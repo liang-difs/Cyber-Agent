@@ -8,6 +8,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.security import create_access_token
+from app.core.config import get_settings
 from app.agent.context import context_manager, Message
 from app.models.base import close_db
 from app.main import app
@@ -16,7 +17,7 @@ from app.main import app
 def auth_headers(*, user_id: str, tenant_id: str) -> dict[str, str]:
     token = create_access_token(
         {"sub": user_id, "role": "analyst", "tenant_id": tenant_id},
-        secret="",
+        secret=get_settings().jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
 

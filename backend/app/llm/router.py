@@ -17,6 +17,7 @@ import litellm
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings, get_llm_max_tokens
+from app.llm.cache import get_llm_cache
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +131,18 @@ class LLMRouter:
         return self.openai_api_key or ""
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
-        """同步调用（非 streaming）"""
+        """同步调用（非 streaming）with caching"""
         start = time.time()
+
+        # Check cache for non-streaming requests
+        model = request.model or self.default_model
+        cache = get_llm_cache()
+        cached = cache.get(request.messages, model, request.temperature)
+        if cached:
+            logger.info("LLM cache hit for trace=%s", request.trace_id)
+            cached["trace_id"] = request.trace_id
+            cached["latency_ms"] = int((time.time() - start) * 1000)
+            return LLMResponse(**cached)
 
         last_error: Exception | None = None
         for model in self._model_candidates(request.model):
@@ -139,12 +150,17 @@ class LLMRouter:
                 try:
                     response = await self._acompletion(request, model=model, stream=False)
                     latency_ms = int((time.time() - start) * 1000)
-                    return self._build_response(
+                    llm_response = self._build_response(
                         response=response,
                         model=model,
                         request=request,
                         latency_ms=latency_ms,
                     )
+
+                    # Cache successful response
+                    cache.set(request.messages, model, request.temperature, llm_response.model_dump())
+
+                    return llm_response
                 except Exception as e:
                     last_error = e
                     logger.warning(
@@ -339,6 +355,11 @@ class LLMRouter:
 
         recent_usage = self.usage_events[-10:]
         total_cost = round(sum(float(e.get("cost_usd", 0.0) or 0.0) for e in self.usage_events), 6)
+
+        # Include cache stats
+        cache = get_llm_cache()
+        cache_stats = cache.stats()
+
         return {
             "default_model": self.default_model,
             "base_url": self.base_url or "api",
@@ -357,6 +378,7 @@ class LLMRouter:
             "usage_event_count": len(self.usage_events),
             "total_cost_usd": total_cost,
             "recent_usage": recent_usage,
+            "cache": cache_stats,
         }
 
     def _model_candidates_including_open(self) -> list[str]:

@@ -242,12 +242,13 @@ class KnowledgeGraph:
 
     def get_neighbors(self, entity_id: str, depth: int = 1) -> dict[str, Any]:
         """获取邻居节点（BFS）"""
+        from collections import deque
         visited = set()
         result = {"entities": {}, "relations": {}}
-        queue = [(entity_id, 0)]
+        queue = deque([(entity_id, 0)])
 
         while queue:
-            current_id, current_depth = queue.pop(0)
+            current_id, current_depth = queue.popleft()
 
             if current_id in visited or current_depth > depth:
                 continue
@@ -271,23 +272,25 @@ class KnowledgeGraph:
         return result
 
     def find_path(self, source_id: str, target_id: str, max_depth: int = 5) -> list[list[str]]:
-        """查找两个实体之间的路径（BFS）"""
+        """查找两个实体之间的路径（BFS，双向遍历）"""
+        from collections import deque
         if source_id == target_id:
             return [[source_id]]
 
         paths = []
-        queue = [(source_id, [source_id])]
+        queue = deque([(source_id, [source_id])])
         visited = {source_id}
 
         while queue:
-            current_id, path = queue.pop(0)
+            current_id, path = queue.popleft()
 
             if len(path) > max_depth:
                 continue
 
-            relations = self.get_entity_relations(current_id, "outgoing")
+            # Traverse both outgoing and incoming relations
+            relations = self.get_entity_relations(current_id)
             for relation in relations:
-                neighbor_id = relation.target_id
+                neighbor_id = relation.target_id if relation.source_id == current_id else relation.source_id
 
                 if neighbor_id == target_id:
                     paths.append(path + [neighbor_id])

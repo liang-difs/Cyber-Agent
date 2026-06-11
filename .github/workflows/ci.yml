@@ -35,7 +35,7 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
-      - name: Run core tests
+      - name: Run agent core tests
         env:
           APP_ENV: development
           AUTH_DEV_FALLBACK_ENABLED: "true"
@@ -43,15 +43,7 @@ jobs:
           LLM_MODEL: deepseek-v4-flash
           LLM_BASE_URL: ""
         run: |
-          PYTHONPATH=backend pytest tests/ -q --tb=short \
-            --ignore=tests/test_multimodal_tools.py \
-            --ignore=tests/test_multi_agent.py \
-            --ignore=tests/test_pcap_analysis.py \
-            --ignore=tests/test_pcap_tool.py \
-            --ignore=tests/test_llm_router.py \
-            --ignore=tests/test_config.py \
-            --ignore=tests/test_ioc_tool.py \
-            --ignore=tests/test_monitoring.py
+          PYTHONPATH=backend pytest tests/test_react_agent.py tests/test_json_parser.py tests/test_context_compressor.py tests/test_loop_state.py tests/test_retry.py tests/test_tool_cache.py tests/test_decision_trace.py tests/test_config.py tests/test_constants.py tests/test_exceptions.py tests/test_security.py tests/test_sanitizer.py tests/test_tool_registry.py tests/test_cve_tool.py tests/test_ip_tool.py tests/test_rag.py tests/test_knowledge_graph.py tests/test_rule_engine.py tests/test_response_actions.py tests/test_report_generator.py -q --tb=short
 
   frontend-build:
     runs-on: ubuntu-latest

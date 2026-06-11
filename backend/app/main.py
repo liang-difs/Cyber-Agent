@@ -37,6 +37,7 @@ from app.api.multi_agent import router as multi_agent_router
 from app.api.rules import router as rules_router
 from app.api.response_actions import router as response_actions_router
 from app.api.events import router as events_router
+from app.api.knowledge_graph import router as knowledge_graph_router
 from app.agent.context import context_manager
 from app.core.config import get_settings
 
@@ -69,6 +70,8 @@ async def lifespan(app: FastAPI):
         logger.info("Database tables initialized")
     except Exception as e:
         logger.warning("Database init skipped: %s (PostgreSQL not available)", e)
+        if "connect" in str(e).lower():
+            logger.error("Database connection failed - check DATABASE_URL")
 
     # Background: import CVE data into RAG BM25 index
     async def _import_cves():
@@ -95,7 +98,8 @@ async def lifespan(app: FastAPI):
             try:
                 from app.rag.bm25_search import bm25_instance
                 from app.rag.importer import sync_cves
-                from app.core.config import get_settings
+from app.core.config import get_settings
+from app.core.constants import APP_VERSION
                 settings = get_settings()
                 count = await sync_cves(bm25_instance, api_key=settings.nvd_api_key, since_hours=24)
                 if count:
@@ -106,6 +110,43 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_import_cves())
     asyncio.create_task(_cve_sync_loop())
+
+    # Background: import threat data into Knowledge Graph
+    async def _import_kg():
+        try:
+            from app.knowledge_graph.graph import get_knowledge_graph
+            kg = get_knowledge_graph()
+            if kg.get_stats().get("total_entities", 0) > 0:
+                logger.info("Knowledge graph already has data, skipping import")
+                return
+
+            logger.info("Knowledge graph empty, importing threat data...")
+            from app.scripts.import_kg_threat_data import import_mitre_attack, import_cve_entities
+            from pathlib import Path
+
+            # corpus 目录在项目根目录（backend 的上一级）
+            corpus_dir = Path(__file__).resolve().parent.parent.parent / "corpus"
+
+            # Import MITRE ATT&CK
+            attack_path = corpus_dir / "attack" / "mitre_attack.json"
+            if attack_path.exists():
+                stats = import_mitre_attack(kg, str(attack_path))
+                logger.info("KG ATT&CK import: %s", stats)
+
+            # Import CVE entities (critical + high)
+            for cve_file in ["nvd_critical.jsonl", "nvd_high.jsonl"]:
+                cve_path = corpus_dir / "nvd_full" / cve_file
+                if cve_path.exists():
+                    stats = import_cve_entities(kg, str(cve_path), max_items=5000)
+                    logger.info("KG CVE import from %s: %s", cve_file, stats)
+
+            final = kg.get_stats()
+            logger.info("Knowledge graph ready: %d entities, %d relations",
+                        final.get("total_entities", 0), final.get("total_relations", 0))
+        except Exception as e:
+            logger.warning("Knowledge graph import failed: %s", e)
+
+    asyncio.create_task(_import_kg())
 
     yield
     # Shutdown
@@ -120,7 +161,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CyberSec Agent",
     description="网络安全智能分析平台 — ReAct Agent + DeepSeek API + 攻击链溯源 + 关联分析",
-    version="0.5.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -138,8 +179,10 @@ app.add_middleware(
 try:
     from app.middleware.audit import AuditMiddleware
     app.add_middleware(AuditMiddleware)
-except Exception:
-    pass  # Graceful if DB not available
+except ImportError as e:
+    logger.warning("Audit middleware not loaded: %s", e)
+except Exception as e:
+    logger.error("Audit middleware initialization failed: %s", e)
 
 # Routers
 app.include_router(verify_router)
@@ -161,6 +204,7 @@ app.include_router(multi_agent_router)
 app.include_router(rules_router)
 app.include_router(response_actions_router)
 app.include_router(events_router)
+app.include_router(knowledge_graph_router)
 
 
 @app.get("/")

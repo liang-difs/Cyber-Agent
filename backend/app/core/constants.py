@@ -1,0 +1,31 @@
+"""Application constants for CyberSec Agent."""
+
+from __future__ import annotations
+
+# 版本信息
+APP_VERSION = "0.9.0"
+APP_TITLE = "CyberSec Agent"
+
+# 默认配置
+DEFAULT_LLM_MODEL = "deepseek-v4-flash"
+DEFAULT_LLM_TIMEOUT = 30
+DEFAULT_MAX_TOOL_CALLS = 4
+DEFAULT_CONTEXT_WINDOW = 32768
+
+# RAG 配置
+RAG_TOP_K = 4
+RAG_MAX_OBSERVATION_TOKENS = 2000
+
+# 调查预算
+MINI_PLANNER_MAX_STEPS = 4
+MINI_PLANNER_MAX_TIME = 60
+FULL_PLANNER_MAX_STEPS = 12
+FULL_PLANNER_MAX_TIME = 120
+
+# JWT 配置
+JWT_SECRET_MIN_LENGTH = 32
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_HOURS = 24
+
+# API 配置
+API_V1_PREFIX = "/api/v1"

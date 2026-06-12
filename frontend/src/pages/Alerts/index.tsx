@@ -40,6 +40,7 @@ export default function Alerts() {
   const [triagingAlertId, setTriagingAlertId] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingAlertId, setAnalyzingAlertId] = useState<string | null>(null);
+  const [analyzeResult, setAnalyzeResult] = useState<Record<string, unknown> | null>(null);
   const { pollTask } = useTaskPolling();
 
   const fetchAlerts = useCallback(async (selectedId?: string) => {
@@ -123,9 +124,14 @@ export default function Alerts() {
   const handleAnalyze = useCallback(async (alert: Alert) => {
     setAnalyzing(true);
     setAnalyzingAlertId(alert.id);
+    setAnalyzeResult(null);
+    setSelectedAlert(alert);
+    setDrawerOpen(true);
     try {
       const result = await analyzeAlert(alert.id);
       if (result.success) {
+        setAnalyzeResult(result.result);
+        await fetchAlerts(alert.id);
         message.success('协同分析完成');
       } else {
         message.warning('协同分析已启动，但未返回完整结果');
@@ -136,7 +142,7 @@ export default function Alerts() {
       setAnalyzing(false);
       setAnalyzingAlertId(null);
     }
-  }, []);
+  }, [fetchAlerts]);
 
   const columns = [
     {
@@ -275,6 +281,15 @@ export default function Alerts() {
                 description="已提交研判任务，结果完成后会自动刷新当前告警并回填到详情页。"
               />
             )}
+            {analyzing && analyzingAlertId === selectedAlert.id && (
+              <AntAlert
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="正在协同分析"
+                description="多智能体协同分析进行中，完成后结果将展示在此处。"
+              />
+            )}
           <Descriptions column={1} bordered size="small">
               <Descriptions.Item label="ID">{selectedAlert.id}</Descriptions.Item>
               <Descriptions.Item label="规则">
@@ -396,6 +411,72 @@ export default function Alerts() {
                     {(triageResult?.assessment?.evidence || selectedAlert.assessment?.evidence || []).join(', ') || '-'}
                   </Descriptions.Item>
                 </Descriptions>
+              </Card>
+            )}
+
+            {analyzeResult && (
+              <Card title="协同分析结果" size="small" style={{ marginTop: 16 }}>
+                <Descriptions column={1} bordered size="small">
+                  <Descriptions.Item label="任务类型">
+                    {String(analyzeResult.task_type || '-')}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="任务 ID">
+                    <code>{String(analyzeResult.task_id || '-')}</code>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="状态">
+                    <Tag color={analyzeResult.success ? 'success' : 'warning'}>
+                      {analyzeResult.success ? '成功' : '部分完成'}
+                    </Tag>
+                  </Descriptions.Item>
+                </Descriptions>
+                {analyzeResult.result != null && typeof analyzeResult.result === 'object' && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>执行详情</div>
+                    {(() => {
+                      const r = analyzeResult.result as Record<string, unknown>;
+                      return (
+                        <>
+                          {r.summary != null && (
+                            <div style={{ marginBottom: 8, padding: '8px 12px', background: 'var(--app-surface-elevated)', borderRadius: 6, fontSize: 13 }}>
+                              {String(r.summary)}
+                            </div>
+                          )}
+                          {r.status != null && (
+                            <div style={{ marginBottom: 4, fontSize: 13 }}>
+                              <strong>执行状态：</strong>{String(r.status)}
+                            </div>
+                          )}
+                          {r.steps_completed != null && (
+                            <div style={{ marginBottom: 4, fontSize: 13 }}>
+                              <strong>完成步骤：</strong>{String(r.steps_completed)}/{String(r.total_steps || '?')}
+                            </div>
+                          )}
+                          {r.step_results != null && typeof r.step_results === 'object' && (
+                            <div style={{ marginTop: 8 }}>
+                              {Object.entries(r.step_results as Record<string, unknown>).map(([stepId, stepResult]) => {
+                                const sr = stepResult as Record<string, unknown>;
+                                return (
+                                  <div key={stepId} style={{ marginBottom: 6, padding: '6px 10px', background: 'var(--app-surface)', border: '1px solid var(--app-border)', borderRadius: 4, fontSize: 12 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                      <Tag color={sr.success ? 'success' : 'error'} style={{ margin: 0 }}>{stepId}</Tag>
+                                      <span style={{ color: '#999' }}>{String(sr.agent_role || '')}</span>
+                                      {sr.time_ms != null && <span style={{ marginLeft: 'auto', color: '#999' }}>{Number(sr.time_ms)}ms</span>}
+                                    </div>
+                                    {sr.output != null && typeof sr.output === 'object' && (
+                                      <pre style={{ margin: 0, fontSize: 11, maxHeight: 120, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                        {JSON.stringify(sr.output, null, 2).slice(0, 500)}
+                                      </pre>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
               </Card>
             )}
           </>

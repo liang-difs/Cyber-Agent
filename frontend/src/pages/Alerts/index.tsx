@@ -167,7 +167,16 @@ export default function Alerts() {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (v: string) => <Tag>{v}</Tag>,
+      render: (v: string) => {
+        const colorMap: Record<string, string> = {
+          open: 'blue',
+          analyzed: 'purple',
+          confirmed: 'red',
+          false_positive: 'green',
+          closed: 'default',
+        };
+        return <Tag color={colorMap[v] || 'default'}>{v}</Tag>;
+      },
     },
     {
       title: '置信度',
@@ -302,7 +311,19 @@ export default function Alerts() {
                   {selectedAlert.severity.toUpperCase()}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="状态">{selectedAlert.status}</Descriptions.Item>
+              <Descriptions.Item label="状态">
+                {(() => {
+                  const colorMap: Record<string, string> = {
+                    open: 'blue', analyzed: 'purple', confirmed: 'red', false_positive: 'green', closed: 'default',
+                  };
+                  return <Tag color={colorMap[selectedAlert.status] || 'default'}>{selectedAlert.status}</Tag>;
+                })()}
+                {selectedAlert.status === 'analyzed' && (
+                  <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--app-text-secondary)' }}>
+                    已完成协同分析
+                  </span>
+                )}
+              </Descriptions.Item>
               <Descriptions.Item label="置信度">
                 {selectedAlert.confidence != null ? `${(selectedAlert.confidence * 100).toFixed(0)}%` : '-'}
               </Descriptions.Item>

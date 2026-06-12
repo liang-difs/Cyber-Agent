@@ -247,6 +247,54 @@ async def analyze_alert_with_multi_agent(
 
         result = await coordinator.execute_task(task)
 
+        # Persist analysis results back to the Alert row
+        try:
+            from datetime import datetime, timezone
+            result_dict = result.to_dict() if hasattr(result, "to_dict") else {}
+            step_results = result_dict.get("step_results", {})
+
+            # Extract verdict and confidence from step results
+            extracted_verdict = None
+            extracted_confidence = None
+            extracted_ttps: list[str] = list(alert.ttp_ids or [])
+
+            for _sid, step in step_results.items():
+                step_output = step.get("result", {})
+                if not isinstance(step_output, dict):
+                    continue
+                # Look for verdict/confidence in any step output
+                if step_output.get("verdict") and not extracted_verdict:
+                    extracted_verdict = step_output["verdict"]
+                if step_output.get("confidence") is not None and extracted_confidence is None:
+                    extracted_confidence = float(step_output["confidence"])
+                # Collect TTPs from step outputs
+                for ttp in step_output.get("ttp_ids", step_output.get("ttps", [])):
+                    if isinstance(ttp, str) and ttp not in extracted_ttps:
+                        extracted_ttps.append(ttp)
+                    elif isinstance(ttp, dict):
+                        tid = ttp.get("technique", "")
+                        if tid and tid not in extracted_ttps:
+                            extracted_ttps.append(tid)
+
+            async with factory() as session:
+                db_result = await session.execute(
+                    select(Alert).where(Alert.id == alert_id)
+                )
+                db_alert = db_result.scalar_one_or_none()
+                if db_alert:
+                    if extracted_verdict:
+                        db_alert.verdict = extracted_verdict
+                    if extracted_confidence is not None:
+                        db_alert.confidence = round(extracted_confidence, 2)
+                    if extracted_ttps:
+                        db_alert.ttp_ids = extracted_ttps
+                    db_alert.status = "analyzed"
+                    db_alert.updated_at = datetime.now(timezone.utc)
+                    await session.commit()
+        except Exception as persist_err:
+            import logging
+            logging.getLogger(__name__).warning("Failed to persist analysis result for alert %s: %s", alert_id, persist_err)
+
         return {
             "success": result.success if hasattr(result, "success") else True,
             "task_id": str(result.task_id) if hasattr(result, "task_id") else None,

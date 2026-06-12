@@ -81,7 +81,7 @@ def get_coordinator() -> Coordinator:
 
 class TaskRequestModel(BaseModel):
     """任务请求模型"""
-    task_type: str = Field(..., description="任务类型")
+    task_type: str = Field(default="generic", description="任务类型")
     description: str = Field(..., description="任务描述")
     parameters: dict[str, Any] = Field(default_factory=dict, description="任务参数")
     priority: str = Field(default="medium", description="优先级: critical/high/medium/low")

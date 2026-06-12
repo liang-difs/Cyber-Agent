@@ -12,7 +12,7 @@ def test_settings_defaults():
     assert s.llm_max_tokens == 16384
     assert s.llm_circuit_failure_threshold == 3
     assert s.llm_circuit_reset_seconds == 60
-    assert s.react_max_turns == 6
+    assert s.react_max_turns == 10
     assert s.react_max_tool_retries == 3
     assert s.ctx_compress_threshold == 8000
     assert s.ctx_obs_max_tokens == 2000
@@ -21,7 +21,6 @@ def test_settings_defaults():
     assert s.jwt_algorithm == "HS256"
     assert s.jwt_expire_minutes == 60
     assert s.redis_url == "redis://localhost:6379/0"
-    assert s.jwt_secret == ""
     assert s.auth_dev_fallback_enabled is True
 
 

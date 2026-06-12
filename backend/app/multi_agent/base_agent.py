@@ -38,12 +38,18 @@ class BaseAgent(ABC):
         self.llm = llm_router
         self.tools = tool_registry
         self.capabilities = capabilities or []
-        self._message_queue: asyncio.Queue[AgentMessage] = asyncio.Queue()
+        self._message_queue: Optional[asyncio.Queue[AgentMessage]] = None
         self._running = False
         self._current_task: Optional[str] = None
 
         # 注册到全局注册表
         agent_registry.register(agent_id, role, self.capabilities)
+
+    @property
+    def message_queue(self) -> asyncio.Queue[AgentMessage]:
+        if self._message_queue is None:
+            self._message_queue = asyncio.Queue()
+        return self._message_queue
 
     async def start(self) -> None:
         """启动Agent消息处理循环"""
@@ -53,7 +59,7 @@ class BaseAgent(ABC):
         while self._running:
             try:
                 message = await asyncio.wait_for(
-                    self._message_queue.get(), timeout=1.0
+                    self.message_queue.get(), timeout=1.0
                 )
                 await self._handle_message(message)
             except asyncio.TimeoutError:
@@ -74,7 +80,7 @@ class BaseAgent(ABC):
 
     async def receive_message(self, message: AgentMessage) -> None:
         """接收消息（放入队列）"""
-        await self._message_queue.put(message)
+        await self.message_queue.put(message)
 
     async def _handle_message(self, message: AgentMessage) -> None:
         """处理接收到的消息"""

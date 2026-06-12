@@ -3,6 +3,8 @@
 from unittest.mock import patch, MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+import os
+import tempfile
 
 from app.models.base import Base
 from app.models.models import Alert
@@ -27,6 +29,19 @@ from app.tasks.pcap_analysis import (
     analyze_pcap,
     PCAP_MAGIC,
 )
+
+# Project data directory — one of the allowed bases for analyze_pcap
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
+
+
+def _make_pcap_in_data_dir(name: str = "test.pcap") -> str:
+    """Create a minimal pcap file in the project data directory. Returns path."""
+    os.makedirs(_DATA_DIR, exist_ok=True)
+    path = os.path.join(_DATA_DIR, name)
+    with open(path, "wb") as f:
+        f.write(PCAP_MAGIC + b"\x00" * 100)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -403,18 +418,19 @@ def test_analyze_pcap_invalid_file():
     assert result["success"] is False
 
 
-def test_analyze_pcap_no_tshark(tmp_path):
-    pcap_file = tmp_path / "test.pcap"
-    pcap_file.write_bytes(PCAP_MAGIC + b"\x00" * 100)
-    with patch("app.tasks.pcap_analysis._run_tshark", return_value=[]):
-        result = analyze_pcap(str(pcap_file))
-    assert result["success"] is True
-    assert result["summary"]["total_packets"] == 0
+def test_analyze_pcap_no_tshark():
+    pcap_file = _make_pcap_in_data_dir("test_no_tshark.pcap")
+    try:
+        with patch("app.tasks.pcap_analysis._run_tshark", return_value=[]):
+            result = analyze_pcap(pcap_file)
+        assert result["success"] is True
+        assert result["summary"]["total_packets"] == 0
+    finally:
+        os.unlink(pcap_file)
 
 
-def test_analyze_pcap_full_pipeline(tmp_path):
-    pcap_file = tmp_path / "test.pcap"
-    pcap_file.write_bytes(PCAP_MAGIC + b"\x00" * 100)
+def test_analyze_pcap_full_pipeline():
+    pcap_file = _make_pcap_in_data_dir("test_full_pipeline.pcap")
 
     mock_rows = [
         {
@@ -440,34 +456,36 @@ def test_analyze_pcap_full_pipeline(tmp_path):
         },
     ]
 
-    with patch("app.tasks.pcap_analysis._run_tshark", return_value=mock_rows):
-        with patch("app.tasks.pcap_analysis._write_alerts_to_db", return_value=0):
-            result = analyze_pcap(str(pcap_file), max_packets=100)
+    try:
+        with patch("app.tasks.pcap_analysis._run_tshark", return_value=mock_rows), \
+             patch("app.tasks.pcap_analysis._write_alerts_to_db", return_value=0):
+                result = analyze_pcap(pcap_file, max_packets=100)
 
-    assert result["success"] is True
-    assert result["summary"]["total_packets"] == 2
-    assert result["summary"]["time_basis"] == "relative"
-    assert result["summary"]["start_time"] == ""
-    assert result["summary"]["end_time"] == ""
-    assert result["summary"]["total_flows"] >= 2
-    assert len(result["flows"]) >= 2
-    # Flows sorted by bytes desc — find the TCP flow
-    tcp_flow = next((f for f in result["flows"] if f["protocol"] == "TCP"), None)
-    assert tcp_flow is not None
-    assert tcp_flow["tcp_flags"]["SYN"] >= 1
-    assert result["dns"]["stats"]["total_queries"] == 1
-    assert result["dns"]["stats"]["unique_domains"] == 1
-    assert len(result["protocol_insights"]["http_hosts"]) == 1
-    assert len(result["timeline"]) >= 1
-    assert result["sanitized_for_llm"] is True
-    assert "llm_context" in result
-    assert "external_ips_for_lookup" in result
-    assert "domains_for_lookup" in result
+        assert result["success"] is True
+        assert result["summary"]["total_packets"] == 2
+        assert result["summary"]["time_basis"] == "relative"
+        assert result["summary"]["start_time"] == ""
+        assert result["summary"]["end_time"] == ""
+        assert result["summary"]["total_flows"] >= 2
+        assert len(result["flows"]) >= 2
+        # Flows sorted by bytes desc — find the TCP flow
+        tcp_flow = next((f for f in result["flows"] if f["protocol"] == "TCP"), None)
+        assert tcp_flow is not None
+        assert tcp_flow["tcp_flags"]["SYN"] >= 1
+        assert result["dns"]["stats"]["total_queries"] == 1
+        assert result["dns"]["stats"]["unique_domains"] == 1
+        assert len(result["protocol_insights"]["http_hosts"]) == 1
+        assert len(result["timeline"]) >= 1
+        assert result["sanitized_for_llm"] is True
+        assert "llm_context" in result
+        assert "external_ips_for_lookup" in result
+        assert "domains_for_lookup" in result
+    finally:
+        os.unlink(pcap_file)
 
 
-def test_analyze_pcap_deduplicates_lookup_domains(tmp_path):
-    pcap_file = tmp_path / "test.pcap"
-    pcap_file.write_bytes(PCAP_MAGIC + b"\x00" * 100)
+def test_analyze_pcap_deduplicates_lookup_domains():
+    pcap_file = _make_pcap_in_data_dir("test_dedup.pcap")
 
     mock_rows = []
     for idx, domain in enumerate(["example.com", "example.com", "example.org"]):
@@ -483,16 +501,18 @@ def test_analyze_pcap_deduplicates_lookup_domains(tmp_path):
             "ssh.protocol": "",
         })
 
-    with patch("app.tasks.pcap_analysis._run_tshark", return_value=mock_rows):
-        with patch("app.tasks.pcap_analysis._write_alerts_to_db", return_value=0):
-            result = analyze_pcap(str(pcap_file), max_packets=100)
+    try:
+        with patch("app.tasks.pcap_analysis._run_tshark", return_value=mock_rows), \
+             patch("app.tasks.pcap_analysis._write_alerts_to_db", return_value=0):
+            result = analyze_pcap(pcap_file, max_packets=100)
 
-    assert result["domains_for_lookup"] == ["example.com", "example.org"]
+        assert result["domains_for_lookup"] == ["example.com", "example.org"]
+    finally:
+        os.unlink(pcap_file)
 
 
-def test_analyze_pcap_prioritizes_anomaly_related_lookup_ips(tmp_path):
-    pcap_file = tmp_path / "test.pcap"
-    pcap_file.write_bytes(PCAP_MAGIC + b"\x00" * 100)
+def test_analyze_pcap_prioritizes_anomaly_related_lookup_ips():
+    pcap_file = _make_pcap_in_data_dir("test_prioritize.pcap")
 
     mock_rows = [
         {
@@ -527,18 +547,20 @@ def test_analyze_pcap_prioritizes_anomaly_related_lookup_ips(tmp_path):
         },
     ]
 
-    with patch("app.tasks.pcap_analysis._run_tshark", return_value=mock_rows):
-        with patch("app.tasks.pcap_analysis._write_alerts_to_db", return_value=0):
-            result = analyze_pcap(str(pcap_file), max_packets=100)
+    try:
+        with patch("app.tasks.pcap_analysis._run_tshark", return_value=mock_rows), \
+             patch("app.tasks.pcap_analysis._write_alerts_to_db", return_value=0):
+            result = analyze_pcap(pcap_file, max_packets=100)
 
-    # Order may vary depending on anomaly detection; check membership
-    ips = result["external_ips_for_lookup"]
-    assert set(["1.2.215.113", "1.1.99.28", "1.2.102.211", "1.1.210.113"]).issubset(set(ips))
+        # Order may vary depending on anomaly detection; check membership
+        ips = result["external_ips_for_lookup"]
+        assert set(["1.2.215.113", "1.1.99.28", "1.2.102.211", "1.1.210.113"]).issubset(set(ips))
+    finally:
+        os.unlink(pcap_file)
 
 
-def test_analyze_pcap_epoch_timestamp_summary(tmp_path):
-    pcap_file = tmp_path / "test.pcap"
-    pcap_file.write_bytes(PCAP_MAGIC + b"\x00" * 100)
+def test_analyze_pcap_epoch_timestamp_summary():
+    pcap_file = _make_pcap_in_data_dir("test_epoch.pcap")
 
     mock_rows = [
         {
@@ -565,11 +587,14 @@ def test_analyze_pcap_epoch_timestamp_summary(tmp_path):
         },
     ]
 
-    with patch("app.tasks.pcap_analysis._run_tshark", return_value=mock_rows):
-        with patch("app.tasks.pcap_analysis._write_alerts_to_db", return_value=0):
-            result = analyze_pcap(str(pcap_file), max_packets=100)
+    try:
+        with patch("app.tasks.pcap_analysis._run_tshark", return_value=mock_rows), \
+             patch("app.tasks.pcap_analysis._write_alerts_to_db", return_value=0):
+            result = analyze_pcap(pcap_file, max_packets=100)
 
-    assert result["success"] is True
-    assert result["summary"]["time_basis"] == "epoch"
-    assert result["summary"]["start_time"].startswith("2024-03-09T")
-    assert result["summary"]["end_time"].startswith("2024-03-09T")
+        assert result["success"] is True
+        assert result["summary"]["time_basis"] == "epoch"
+        assert result["summary"]["start_time"].startswith("2024-03-09T")
+        assert result["summary"]["end_time"].startswith("2024-03-09T")
+    finally:
+        os.unlink(pcap_file)

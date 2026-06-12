@@ -85,7 +85,7 @@ async def test_root_endpoint_phase4():
     assert resp.status_code == 200
     data = resp.json()
     assert data["phase"] == "Phase 4"
-    assert data["version"] == "0.8.0"
+    assert data["version"] == "0.9.0"
     assert "Attack Chain Tracing" in str(data["features"])
     assert "attack_chains" in data["endpoints"]
 

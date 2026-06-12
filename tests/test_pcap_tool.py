@@ -37,7 +37,8 @@ async def test_execute_includes_time_basis_and_fact_separation(tmp_path, tool):
         "domains_for_lookup": ["evil.example"],
     }
 
-    with patch("app.tasks.pcap_analysis.analyze_pcap", return_value=mock_analysis):
+    with patch("app.tools.pcap_tool._validate_pcap_path", return_value=None), \
+         patch("app.tasks.pcap_analysis.analyze_pcap", return_value=mock_analysis):
         result = await tool.execute(PcapToolInput(
             pcap_path=str(pcap_file),
             max_packets=100,
@@ -84,7 +85,8 @@ async def test_execute_prefers_original_display_filename(tmp_path, tool):
         "domains_for_lookup": [],
     }
 
-    with patch("app.tasks.pcap_analysis.analyze_pcap", return_value=mock_analysis):
+    with patch("app.tools.pcap_tool._validate_pcap_path", return_value=None), \
+         patch("app.tasks.pcap_analysis.analyze_pcap", return_value=mock_analysis):
         result = await tool.execute(PcapToolInput(
             pcap_path=str(pcap_file),
             display_filename="Tinba.pcap",
@@ -123,7 +125,8 @@ async def test_execute_handles_anomaly_summary_without_get_settings_error(tmp_pa
         "domains_for_lookup": ["zeus.example"],
     }
 
-    with patch("app.tools.pcap_tool.get_settings") as get_settings_mock:
+    with patch("app.tools.pcap_tool._validate_pcap_path", return_value=None), \
+         patch("app.tools.pcap_tool.get_settings") as get_settings_mock:
         get_settings_mock.return_value.abuseipdb_api_key = ""
         with patch("app.tasks.pcap_analysis.analyze_pcap", return_value=mock_analysis):
             result = await tool.execute(PcapToolInput(

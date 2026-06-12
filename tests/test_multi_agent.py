@@ -219,10 +219,21 @@ class TestCoordinator:
 
     def test_coordinator_executes_real_agents(self):
         """End-to-end check that the coordinator waits for actual agent results."""
+        from app.multi_agent.registry import agent_registry
+
+        # Clean up any stale registrations from prior tests
+        for stale_id in ["test_analyzer_closure", "test_executor_closure", "test_responder_closure", "test_coordinator_closure"]:
+            agent_registry.unregister(stale_id)
+
         analyzer = AnalyzerAgent(agent_id="test_analyzer_closure")
         executor = ExecutorAgent(agent_id="test_executor_closure")
         responder = ResponderAgent(agent_id="test_responder_closure")
         coordinator = Coordinator(agent_id="test_coordinator_closure")
+
+        # Verify agents are registered
+        from app.multi_agent.protocol import AgentRole
+        available = agent_registry.get_available_by_role(AgentRole.ANALYZER)
+        assert available is not None, f"No ANALYZER in registry. All agents: {[a.agent_id for a in agent_registry.list_all()]}"
 
         for agent in (analyzer, executor, responder):
             message_bus.register_agent(agent)
